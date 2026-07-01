@@ -1,0 +1,29 @@
+# Dart / Pub
+.dart_tool/
+.packages
+build/
+pubspec.lock
+doc/api/
+
+# For a reusable package, pubspec.lock is not committed (apps commit it,
+# libraries don't). Remove the line above if this becomes an app.
+
+# Dart tool caches
+.dart_tool/package_config.json
+
+# Coverage
+coverage/
+*.lcov
+
+# Analyzer / IDE
+.idea/
+*.iml
+.vscode/
+*.log
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Generated SEO output (this package generates into a Flutter app's build/web,
+# which is already ignored via build/ above; nothing extra to ignore here)

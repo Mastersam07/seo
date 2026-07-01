@@ -1,0 +1,14 @@
+name: seo_seed
+description: Opt-in, per-route SEO for Flutter web. Seeds real head metadata and crawler content into static HTML at build time.
+version: 0.0.1
+publish_to: none
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  web: ^1.1.1
+
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.31.2

@@ -141,4 +141,81 @@ void main() {
       expect(head, contains(r'<\/script>'));
     });
   });
+
+  group('injectPage', () {
+    const shell = '''
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="/">
+  <meta charset="UTF-8">
+  <title>flutter_app</title>
+  <meta name="description" content="A new Flutter project.">
+</head>
+<body>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>''';
+
+    String inject(String head, {String seed = '', String baseHref = '/'}) =>
+        injectPage(shell, head: head, seed: seed, baseHref: baseHref);
+
+    test('replaces the shell title instead of duplicating it', () {
+      final out = inject('<title>Pricing - Sortd</title>');
+      expect('<title>'.allMatches(out).length, 1);
+      expect(out, contains('<title>Pricing - Sortd</title>'));
+      expect(out, isNot(contains('flutter_app')));
+    });
+
+    test('replaces a meta of the same name', () {
+      final out = inject(
+        '<meta name="description" content="Real description">',
+      );
+      expect(RegExp('<meta name="description"').allMatches(out).length, 1);
+      expect(out, contains('Real description'));
+      expect(out, isNot(contains('A new Flutter project.')));
+    });
+
+    test('leaves unrelated shell tags in place', () {
+      final out = inject('<title>x</title>');
+      expect(out, contains('charset="UTF-8"'));
+      expect(out, contains('src="flutter_bootstrap.js"'));
+    });
+
+    test('forces the base href and keeps a single base tag', () {
+      final out = inject('<title>x</title>', baseHref: '/app/');
+      expect('<base '.allMatches(out).length, 1);
+      expect(out, contains('<base href="/app/">'));
+    });
+
+    test('inserts a base tag when the shell has none', () {
+      const bare = '<!DOCTYPE html><html><head></head><body></body></html>';
+      final out = injectPage(bare, head: '', seed: '', baseHref: '/');
+      expect(out, contains('<base href="/">'));
+    });
+
+    test('prepends the seed block as the first body child', () {
+      final out = inject('<title>x</title>', seed: '<h1>Hi</h1>');
+      expect(out, contains('<div id="seo-seed"><h1>Hi</h1></div>'));
+      final seedAt = out.indexOf('id="seo-seed"');
+      final bootAt = out.indexOf('flutter_bootstrap.js');
+      expect(seedAt, lessThan(bootAt));
+    });
+
+    test('preserves the doctype', () {
+      final out = inject('<title>x</title>');
+      expect(out.trimLeft(), startsWith('<!DOCTYPE html>'));
+    });
+
+    test('lenient parsing still yields a full document from loose input', () {
+      final out = injectPage(
+        '<p>not a document</p>',
+        head: '<title>t</title>',
+        seed: '<h1>Hi</h1>',
+        baseHref: '/',
+      );
+      expect(out, contains('<title>t</title>'));
+      expect(out, contains('<div id="seo-seed"><h1>Hi</h1></div>'));
+    });
+  });
 }

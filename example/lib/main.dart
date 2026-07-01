@@ -37,20 +37,30 @@ class HomePage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('Simple pricing',
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+                Text(
+                  'Simple pricing',
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                ),
                 SizedBox(height: 12),
-                Text('Sortd is free for personal groups. '
-                    'Upgrade for receipt scanning and multi-currency.'),
+                Text(
+                  'Sortd is free for personal groups. '
+                  'Upgrade for receipt scanning and multi-currency.',
+                ),
                 SizedBox(height: 32),
-                Text('Splitting rent fairly',
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+                Text(
+                  'Splitting rent fairly',
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                ),
                 SizedBox(height: 12),
-                Text('Splitting rent evenly is rarely fair when rooms differ '
-                    'in size.'),
+                Text(
+                  'Splitting rent evenly is rarely fair when rooms differ '
+                  'in size.',
+                ),
                 SizedBox(height: 8),
-                Text('Sortd lets you split by shares, so a larger room can '
-                    'carry more.'),
+                Text(
+                  'Sortd lets you split by shares, so a larger room can '
+                  'carry more.',
+                ),
               ],
             ),
           ),

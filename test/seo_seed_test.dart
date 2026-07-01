@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:seo_seed/seo_seed.dart';
 import 'package:seo_seed/src/serialize.dart';
 import 'package:seo_seed/src/head.dart';
+import 'package:seo_seed/src/paths.dart';
+import 'package:seo_seed/src/sitemap.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -218,6 +220,51 @@ void main() {
       );
       expect(out, contains('<title>t</title>'));
       expect(out, contains('<div id="seo-seed"><h1>Hi</h1></div>'));
+    });
+  });
+
+  group('trailing-slash policy', () {
+    test('canonicalizeUrl strips trailing slash except root', () {
+      expect(canonicalizeUrl('/post/abc/'), '/post/abc');
+      expect(canonicalizeUrl('/post/abc'), '/post/abc');
+      expect(canonicalizeUrl('/'), '/');
+      expect(canonicalizeUrl(''), '/');
+      expect(canonicalizeUrl('/pricing///'), '/pricing');
+    });
+
+    test('canonicalizeUrl preserves scheme on absolute URLs', () {
+      expect(
+        canonicalizeUrl('https://x.dev/post/abc/'),
+        'https://x.dev/post/abc',
+      );
+      expect(canonicalizeUrl('https://x.dev/'), 'https://x.dev');
+    });
+
+    test('resolvePath drops a trailing slash from the route path', () {
+      final route = SeoRoute.static(
+        path: '/pricing/',
+        metadata: () => const SeoMetadata(title: 't', description: 'd'),
+        content: (b) => b.p('x'),
+      );
+      expect(route.resolvePath(SeoParams.empty), '/pricing');
+    });
+
+    test('canonical tag is normalized', () {
+      final head = renderHead(
+        const SeoMetadata(title: 't', description: 'd', canonical: '/hello/'),
+      );
+      expect(head, contains('rel="canonical" href="/hello"'));
+      expect(head, isNot(contains('/hello/"')));
+    });
+
+    test('sitemap loc has no trailing slash', () async {
+      final route = SeoRoute.static(
+        path: '/pricing/',
+        metadata: () => const SeoMetadata(title: 't', description: 'd'),
+        content: (b) => b.p('x'),
+      );
+      final xml = await renderSitemap([route], 'https://x.dev/');
+      expect(xml, contains('<loc>https://x.dev/pricing</loc>'));
     });
   });
 

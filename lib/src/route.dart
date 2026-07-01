@@ -3,6 +3,7 @@ import 'dart:async';
 import 'metadata.dart';
 import 'node.dart';
 import 'params.dart';
+import 'paths.dart';
 
 /// A single indexable route: its path pattern, the pages that exist for it,
 /// and how to produce head metadata and crawler content for each page.
@@ -77,13 +78,15 @@ class SeoRoute {
   static final _segment = RegExp(r'\[(\w+)\]');
 
   /// Substitutes bracketed segments in [path] with values from [p], e.g.
-  /// `/post/[id]` with `{id: abc}` becomes `/post/abc`.
+  /// `/post/[id]` with `{id: abc}` becomes `/post/abc`, in the package's
+  /// canonical no-trailing-slash form (see [canonicalizeUrl]).
   String resolvePath(SeoParams p) {
-    return path.replaceAllMapped(_segment, (m) {
+    final substituted = path.replaceAllMapped(_segment, (m) {
       return switch (m.group(1)) {
         final key? => p[key],
         null => m.group(0) ?? '',
       };
     });
+    return canonicalizeUrl(substituted);
   }
 }

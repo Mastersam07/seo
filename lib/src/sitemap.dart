@@ -1,3 +1,4 @@
+import 'paths.dart';
 import 'route.dart';
 import 'serialize.dart';
 
@@ -13,7 +14,7 @@ Future<String> renderSitemap(List<SeoRoute> routes, String baseUrl) async {
   final locs = <String>[];
   for (final route in routes) {
     for (final params in await route.resolveParams()) {
-      locs.add('$origin${route.resolvePath(params)}');
+      locs.add(canonicalizeUrl('$origin${route.resolvePath(params)}'));
     }
   }
 

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'metadata.dart';
+import 'paths.dart';
 import 'serialize.dart';
 
 /// Renders [SeoMetadata] into the string of `<head>` tags for one page.
@@ -15,8 +16,12 @@ String renderHead(SeoMetadata m) {
     '<meta name="description" content="${escapeAttr(m.description)}">',
   );
 
-  if (m.canonical case final canonical?) {
-    out.writeln('<link rel="canonical" href="${escapeAttr(canonical)}">');
+  final canonical = switch (m.canonical) {
+    final c? => canonicalizeUrl(c),
+    null => null,
+  };
+  if (canonical case final c?) {
+    out.writeln('<link rel="canonical" href="${escapeAttr(c)}">');
   }
 
   if (m.robots case final robots?) {
@@ -35,7 +40,10 @@ String renderHead(SeoMetadata m) {
     tag('og:description', og.description ?? m.description);
     tag('og:type', og.type);
     tag('og:image', og.image);
-    tag('og:url', og.url ?? m.canonical);
+    tag('og:url', switch (og.url) {
+      final u? => canonicalizeUrl(u),
+      null => canonical,
+    });
   }
 
   if (m.twitter case final tw?) {

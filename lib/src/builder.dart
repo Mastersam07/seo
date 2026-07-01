@@ -39,6 +39,20 @@ class SeoBuilder {
     }
     final shell = shellFile.readAsStringSync();
 
+    // When --base-href is omitted, inherit whatever `flutter build web` already
+    // baked into the shell, so a subpath configured only at build time is not
+    // silently reverted to root. An explicit flag wins, but warn if it conflicts
+    // with the shell.
+    final shellBaseHref = _shellBaseHref(shell);
+    final effectiveBaseHref = baseHref ?? shellBaseHref;
+    if (baseHref != null && baseHref != shellBaseHref) {
+      stderr.writeln(
+        'seo_seed: --base-href "$baseHref" does not match the shell\'s '
+        '<base href="$shellBaseHref"> from `flutter build web`. '
+        'Using "$baseHref" — make sure the two agree or the app will not boot.',
+      );
+    }
+
     var pageCount = 0;
     for (final route in routes) {
       for (final params in await route.resolveParams()) {
@@ -49,7 +63,7 @@ class SeoBuilder {
           shell,
           head: renderHead(meta),
           seed: serializeNode(node),
-          baseHref: baseHref,
+          baseHref: effectiveBaseHref,
         );
 
         final dir = _pageDir(output, route.resolvePath(params));
@@ -60,7 +74,10 @@ class SeoBuilder {
     }
 
     if (baseUrl case final url?) {
-      final sitemap = await renderSitemap(routes, url);
+      final sitemap = await renderSitemap(
+        routes,
+        _siteBase(url, effectiveBaseHref),
+      );
       File('$output/sitemap.xml').writeAsStringSync(sitemap);
     }
 
@@ -162,11 +179,28 @@ void _removeSupersededTags(Element headEl, Element incoming) {
   headEl.children.where(supersedes).toList().forEach((e) => e.remove());
 }
 
-typedef _Options = ({String output, String baseHref, String? baseUrl});
+/// The site base for absolute URLs: the origin plus the base-href path prefix,
+/// so a page under `/app/` lists as `https://host/app/pricing`, not `/pricing`.
+/// A root `/` base href contributes no prefix.
+String _siteBase(String baseUrl, String baseHref) {
+  final origin = baseUrl.replaceAll(RegExp(r'/+$'), '');
+  final prefix = baseHref.replaceAll(RegExp(r'^/+|/+$'), '');
+  return prefix.isEmpty ? origin : '$origin/$prefix';
+}
+
+/// Reads the `<base href>` already present in the shell, normalized to end with
+/// a slash. Defaults to `/` when the shell declares none.
+String _shellBaseHref(String shell) {
+  final href = html.parse(shell).querySelector('base')?.attributes['href'];
+  if (href == null || href.isEmpty) return '/';
+  return href.endsWith('/') ? href : '$href/';
+}
+
+typedef _Options = ({String output, String? baseHref, String? baseUrl});
 
 _Options _parseOptions(List<String> args) {
   var output = 'build/web';
-  var baseHref = '/';
+  String? baseHref;
   String? baseUrl;
 
   for (var i = 0; i < args.length; i++) {
@@ -181,7 +215,7 @@ _Options _parseOptions(List<String> args) {
     }
   }
 
-  if (!baseHref.endsWith('/')) baseHref = '$baseHref/';
+  if (baseHref != null && !baseHref.endsWith('/')) baseHref = '$baseHref/';
   output = output.replaceAll(RegExp(r'/+$'), '');
   return (output: output, baseHref: baseHref, baseUrl: baseUrl);
 }

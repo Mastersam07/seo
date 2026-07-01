@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:seo_seed/seo_seed.dart';
 import 'package:seo_seed/src/serialize.dart';
 import 'package:seo_seed/src/head.dart';
@@ -216,6 +218,51 @@ void main() {
       );
       expect(out, contains('<title>t</title>'));
       expect(out, contains('<div id="seo-seed"><h1>Hi</h1></div>'));
+    });
+  });
+
+  group('SeoBuilder.run', () {
+    SeoRoute pricing() => SeoRoute.static(
+      path: '/pricing',
+      metadata: () => const SeoMetadata(title: 'Pricing', description: 'd'),
+      content: (b) => b.h1('Pricing'),
+    );
+
+    Directory tempWithShell(String shell) {
+      final dir = Directory.systemTemp.createTempSync('seo_seed_test');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      File('${dir.path}/index.html').writeAsStringSync(shell);
+      return dir;
+    }
+
+    test('inherits the shell base href when --base-href is omitted', () async {
+      final dir = tempWithShell(
+        '<!DOCTYPE html><html><head><base href="/app/">'
+        '<title>shell</title></head><body></body></html>',
+      );
+      await SeoBuilder([
+        pricing(),
+      ]).run(['--output', dir.path, '--base-url', 'https://example.com']);
+
+      final page = File('${dir.path}/pricing/index.html').readAsStringSync();
+      expect(page, contains('<base href="/app/">'));
+      expect(page, contains('<title>Pricing</title>'));
+
+      final sitemap = File('${dir.path}/sitemap.xml').readAsStringSync();
+      expect(sitemap, contains('https://example.com/app/pricing'));
+    });
+
+    test('root base href produces unprefixed sitemap URLs', () async {
+      final dir = tempWithShell(
+        '<!DOCTYPE html><html><head><base href="/"></head>'
+        '<body></body></html>',
+      );
+      await SeoBuilder([
+        pricing(),
+      ]).run(['--output', dir.path, '--base-url', 'https://example.com']);
+
+      final sitemap = File('${dir.path}/sitemap.xml').readAsStringSync();
+      expect(sitemap, contains('<loc>https://example.com/pricing</loc>'));
     });
   });
 }

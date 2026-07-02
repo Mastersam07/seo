@@ -565,6 +565,7 @@ void main() {
           changeFreq: null,
           priority: null,
           images: const <String>[],
+          alternates: const <String, String>{},
         ),
       ]);
       expect(xml, contains('<loc>https://x.dev/pricing</loc>'));
@@ -579,6 +580,7 @@ void main() {
           changeFreq: SeoChangeFreq.weekly,
           priority: 0.8,
           images: const ['https://x.dev/og/hi.png'],
+          alternates: const <String, String>{},
         ),
       ]);
       expect(xml, contains('<lastmod>2026-01-05</lastmod>'));
@@ -596,6 +598,7 @@ void main() {
           changeFreq: null,
           priority: 5.0,
           images: const <String>[],
+          alternates: const <String, String>{},
         ),
       ]);
       expect(xml, contains('<priority>1.0</priority>'));
@@ -678,6 +681,41 @@ void main() {
       expect(txt, contains('Allow: /'));
       expect(txt, contains('Sitemap: https://x.dev/sitemap.xml'));
       expect(txt, isNot(contains('Disallow')));
+    });
+  });
+
+  group('locale strategies', () {
+    test('PathPrefixLocales prefixes path and URL', () {
+      const s = PathPrefixLocales();
+      expect(s.pathFor('fr', '/pricing'), '/fr/pricing');
+      expect(
+        s.urlFor('fr', '/pricing', 'https://x.dev'),
+        'https://x.dev/fr/pricing',
+      );
+    });
+
+    test('SubdomainLocales puts the locale in the host', () {
+      const s = SubdomainLocales(domain: 'example.com');
+      expect(s.pathFor('fr', '/pricing'), '/fr/pricing');
+      expect(
+        s.urlFor('fr', '/pricing', 'https://example.com'),
+        'https://fr.example.com/pricing',
+      );
+    });
+
+    test('DomainLocales maps each locale to its origin', () {
+      const s = DomainLocales({
+        'en': 'https://example.com',
+        'fr': 'https://example.fr',
+      });
+      expect(
+        s.urlFor('fr', '/pricing', 'https://example.com'),
+        'https://example.fr/pricing',
+      );
+      expect(
+        () => s.urlFor('de', '/pricing', 'https://example.com'),
+        throwsA(isA<StateError>()),
+      );
     });
   });
 
@@ -885,6 +923,75 @@ void main() {
         expect(page, contains('Hi There')); // humanized leaf segment
       },
     );
+
+    test('localized route generates per-locale pages with hreflang', () async {
+      final dir = tempWithShell(
+        '<!DOCTYPE html><html><head><base href="/"></head>'
+        '<body></body></html>',
+      );
+      final route = SeoRoute.dynamic(
+        path: '/pricing',
+        locales: const ['en', 'fr'],
+        params: () async => const [SeoParams.empty],
+        metadata: (p) => SeoMetadata(
+          title: p.locale == 'fr' ? 'Tarifs' : 'Pricing',
+          description: 'd',
+        ),
+        content: (p, b) => b.h1(p.locale == 'fr' ? 'Tarifs' : 'Pricing'),
+      );
+      await SeoBuilder(
+        [route],
+        defaultLocale: 'en',
+      ).run(['--output', dir.path, '--base-url', 'https://example.com']);
+
+      final en = File('${dir.path}/en/pricing/index.html').readAsStringSync();
+      final fr = File('${dir.path}/fr/pricing/index.html').readAsStringSync();
+
+      // Translated content per locale.
+      expect(en, contains('<title>Pricing</title>'));
+      expect(fr, contains('<title>Tarifs</title>'));
+
+      // Each page self-canonicalizes and carries reciprocal hreflang + x-default.
+      expect(
+        en,
+        contains('rel="canonical" href="https://example.com/en/pricing"'),
+      );
+      for (final page in [en, fr]) {
+        expect(
+          page,
+          contains(
+            '<link rel="alternate" hreflang="en" '
+            'href="https://example.com/en/pricing">',
+          ),
+        );
+        expect(
+          page,
+          contains(
+            '<link rel="alternate" hreflang="fr" '
+            'href="https://example.com/fr/pricing">',
+          ),
+        );
+        expect(
+          page,
+          contains(
+            '<link rel="alternate" hreflang="x-default" '
+            'href="https://example.com/en/pricing">',
+          ),
+        );
+      }
+
+      // Sitemap lists both locales with xhtml:link alternates.
+      final sitemap = File('${dir.path}/sitemap.xml').readAsStringSync();
+      expect(sitemap, contains('<loc>https://example.com/en/pricing</loc>'));
+      expect(sitemap, contains('<loc>https://example.com/fr/pricing</loc>'));
+      expect(
+        sitemap,
+        contains(
+          '<xhtml:link rel="alternate" hreflang="fr" '
+          'href="https://example.com/fr/pricing"/>',
+        ),
+      );
+    });
 
     test('missing shell reports a failure and exits non-zero', () async {
       final saved = exitCode;

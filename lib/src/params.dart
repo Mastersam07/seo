@@ -3,12 +3,22 @@
 /// For a route with path `/post/[id]`, a page generated for post `abc123`
 /// receives `SeoParams({'id': 'abc123'})`. Static routes receive
 /// [SeoParams.empty].
+///
+/// For a localized route, the builder also sets [locale] on the params passed
+/// to `metadata`/`content`, so callbacks can translate per locale.
 class SeoParams {
-  const SeoParams(this.values);
+  const SeoParams(this.values, {this.locale});
 
   final Map<String, String> values;
 
+  /// The locale this page is being generated for (e.g. `en`, `fr`), or null on
+  /// a non-localized route.
+  final String? locale;
+
   static const SeoParams empty = SeoParams({});
+
+  /// A copy of these params tagged with [locale].
+  SeoParams withLocale(String locale) => SeoParams(values, locale: locale);
 
   /// Returns the value for [key], or throws a [StateError] naming the missing
   /// key. Missing params are almost always a mismatch between the route path
@@ -28,5 +38,6 @@ class SeoParams {
   String? maybe(String key) => values[key];
 
   @override
-  String toString() => 'SeoParams($values)';
+  String toString() =>
+      'SeoParams($values${locale == null ? '' : ', locale: $locale'})';
 }

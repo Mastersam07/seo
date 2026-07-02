@@ -16,10 +16,18 @@ import 'serialize.dart';
 ///
 /// [extraJsonLd] blocks are emitted after the metadata's own — the builder uses
 /// this to append an auto-generated breadcrumb.
+///
+/// [alternates] (locale -> absolute URL) and [xDefault] emit reciprocal
+/// `hreflang` links for a localized page. [selfCanonical] is used as the
+/// canonical when the metadata declares none — the builder passes the page's
+/// own URL so each localized variant self-canonicalizes.
 String renderHead(
   SeoMetadata m, {
   String? siteBase,
   Iterable<SeoJsonLd> extraJsonLd = const [],
+  Map<String, String> alternates = const {},
+  String? xDefault,
+  String? selfCanonical,
 }) {
   final out = StringBuffer();
 
@@ -33,10 +41,22 @@ String renderHead(
 
   final canonical = switch (m.canonical) {
     final c? => absolute(canonicalizeUrl(c)),
-    null => null,
+    null => selfCanonical,
   };
   if (canonical case final c?) {
     out.writeln('<link rel="canonical" href="${escapeAttr(c)}">');
+  }
+
+  for (final MapEntry(key: locale, value: url) in alternates.entries) {
+    out.writeln(
+      '<link rel="alternate" hreflang="${escapeAttr(locale)}" '
+      'href="${escapeAttr(url)}">',
+    );
+  }
+  if (xDefault case final url?) {
+    out.writeln(
+      '<link rel="alternate" hreflang="x-default" href="${escapeAttr(url)}">',
+    );
   }
 
   if (m.robots case final robots?) {

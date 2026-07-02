@@ -13,6 +13,7 @@ import 'src/runtime/runtime.dart' as runtime;
 export 'src/params.dart';
 export 'src/metadata.dart';
 export 'src/json_ld.dart';
+export 'src/locale.dart';
 export 'src/node.dart' show SeoNode, SeoElement, SeoText, SeoHtml;
 export 'src/route.dart';
 export 'src/builder.dart';

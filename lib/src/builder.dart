@@ -6,6 +6,7 @@ import 'package:html/parser.dart' as html;
 
 import 'head.dart';
 import 'json_ld.dart';
+import 'locale.dart';
 import 'node.dart';
 import 'params.dart';
 import 'paths.dart';
@@ -27,9 +28,21 @@ import 'sitemap.dart';
 /// dart run tool/build_seo.dart --output build/web --base-url https://sortd.app
 /// ```
 class SeoBuilder {
-  SeoBuilder(this.routes);
+  SeoBuilder(
+    this.routes, {
+    this.defaultLocale,
+    this.localeStrategy = const PathPrefixLocales(),
+  });
 
   final List<SeoRoute> routes;
+
+  /// The locale whose URL is used for the `hreflang="x-default"` alternate. When
+  /// null, the first of a route's [SeoRoute.locales] is used.
+  final String? defaultLocale;
+
+  /// How a locale maps to a URL/path. Defaults to [PathPrefixLocales]
+  /// (`/fr/pricing`).
+  final SeoLocaleStrategy localeStrategy;
 
   /// Generates every page, writes the sitemap, and reports the outcome.
   ///
@@ -80,7 +93,7 @@ class SeoBuilder {
 
     var pageCount = 0;
     final failures = <SeoBuildFailure>[];
-    final entries = <SitemapEntry>[]; // indexable pages, for the sitemap
+    final entries = <SitemapEntry>[];
     for (final route in routes) {
       final List<SeoParams> paramSets;
       try {
@@ -89,49 +102,88 @@ class SeoBuilder {
         failures.add(SeoBuildFailure(route: route.path, message: '$e'));
         continue;
       }
-      for (final params in paramSets) {
-        try {
-          final meta = await route.metadataFor(params);
-          final node = await route.contentFor(params, const SeoHtml());
-          final path = route.resolvePath(params);
-          final page = injectPage(
-            shell,
-            head: renderHead(
-              meta,
-              siteBase: siteBase,
-              extraJsonLd: [
-                if (meta.breadcrumbs)
-                  SeoJsonLd.breadcrumbTrail(path: path, base: siteBase),
-              ],
-            ),
-            seed: serializeNode(node),
-            baseHref: effectiveBaseHref,
-          );
-          final dir = _pageDir(output, path);
-          Directory(dir).createSync(recursive: true);
-          File('$dir/index.html').writeAsStringSync(page);
-          pageCount++;
-          if (siteBase case final base? when meta.indexable) {
-            final sm = meta.sitemap;
-            entries.add((
-              loc: canonicalizeUrl(resolveUrl(path, base)),
-              lastmod: sm?.lastmod,
-              changeFreq: sm?.changeFreq,
-              priority: sm?.priority,
-              images: [
-                for (final image in sm?.images ?? const <String>[])
-                  resolveUrl(image, base),
-              ],
-            ));
+      final locales = route.locales.isEmpty
+          ? const <String?>[null]
+          : route.locales;
+      for (final baseParams in paramSets) {
+        for (final locale in locales) {
+          final params = switch (locale) {
+            final l? => baseParams.withLocale(l),
+            null => baseParams,
+          };
+          try {
+            final meta = await route.metadataFor(params);
+            final node = await route.contentFor(params, const SeoHtml());
+            final routePath = route.resolvePath(params);
+            final pagePath = switch (locale) {
+              final l? => localeStrategy.pathFor(l, routePath),
+              null => routePath,
+            };
+            final pageUrl = switch (siteBase) {
+              final base? => switch (locale) {
+                final l? => localeStrategy.urlFor(l, routePath, base),
+                null => canonicalizeUrl(resolveUrl(routePath, base)),
+              },
+              null => null,
+            };
+
+            var alternates = const <String, String>{};
+            String? xDefault;
+            if (locale != null && siteBase != null) {
+              alternates = {
+                for (final l in route.locales)
+                  l: localeStrategy.urlFor(l, routePath, siteBase),
+              };
+              final dflt = switch (defaultLocale) {
+                final d? when route.locales.contains(d) => d,
+                _ => route.locales.first,
+              };
+              xDefault = localeStrategy.urlFor(dflt, routePath, siteBase);
+            }
+
+            final page = injectPage(
+              shell,
+              head: renderHead(
+                meta,
+                siteBase: siteBase,
+                extraJsonLd: [
+                  if (meta.breadcrumbs)
+                    SeoJsonLd.breadcrumbTrail(path: pagePath, base: siteBase),
+                ],
+                alternates: alternates,
+                xDefault: xDefault,
+                selfCanonical: locale == null ? null : pageUrl,
+              ),
+              seed: serializeNode(node),
+              baseHref: effectiveBaseHref,
+            );
+            final dir = _pageDir(output, pagePath);
+            Directory(dir).createSync(recursive: true);
+            File('$dir/index.html').writeAsStringSync(page);
+            pageCount++;
+            if (pageUrl case final loc? when meta.indexable) {
+              final sm = meta.sitemap;
+              entries.add((
+                loc: loc,
+                lastmod: sm?.lastmod,
+                changeFreq: sm?.changeFreq,
+                priority: sm?.priority,
+                images: [
+                  for (final image in sm?.images ?? const <String>[])
+                    resolveUrl(image, siteBase),
+                ],
+                alternates: alternates,
+              ));
+            }
+          } catch (e) {
+            failures.add(
+              SeoBuildFailure(
+                route: route.path,
+                params: params.values,
+                message: '$e',
+              ),
+            );
           }
-        } catch (e) {
-          failures.add(
-            SeoBuildFailure(
-              route: route.path,
-              params: params.values,
-              message: '$e',
-            ),
-          );
         }
       }
     }
@@ -284,7 +336,7 @@ void _forceBaseHref(Element headEl, String baseHref) {
 
 /// Removes any tag already in [headEl] that [incoming] is about to replace,
 /// keyed by identity: `<title>`, a `<meta>` with the same `name`/`property`, or
-/// a `<link>` with the same `rel`. Other tags are left untouched.
+/// a `<link>` with the same `rel` and `hreflang`. Other tags are left untouched.
 void _removeSupersededTags(Element headEl, Element incoming) {
   bool supersedes(Element existing) {
     if (existing.localName != incoming.localName) return false;
@@ -297,8 +349,14 @@ void _removeSupersededTags(Element headEl, Element incoming) {
               id,
         null => false,
       },
+      // Match on rel AND hreflang, so a page's many `rel="alternate"` locale
+      // links coexist (they differ only by hreflang) while a single
+      // `rel="canonical"` still supersedes.
       'link' => switch (incoming.attributes['rel']) {
-        final rel? => existing.attributes['rel'] == rel,
+        final rel? =>
+          existing.attributes['rel'] == rel &&
+              existing.attributes['hreflang'] ==
+                  incoming.attributes['hreflang'],
         null => false,
       },
       _ => false,

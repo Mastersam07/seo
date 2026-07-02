@@ -16,6 +16,7 @@ class SeoRoute {
     required Future<List<SeoParams>> Function()? params,
     required FutureOr<SeoMetadata> Function(SeoParams) metadata,
     required FutureOr<SeoNode> Function(SeoParams, SeoHtml) content,
+    this.locales = const [],
   }) : _params = params,
        _metadata = metadata,
        _content = content;
@@ -23,6 +24,12 @@ class SeoRoute {
   /// The path pattern, e.g. `/pricing` or `/post/[id]`. Bracketed segments are
   /// substituted per page from the corresponding [SeoParams] value.
   final String path;
+
+  /// Locales this route is generated in. Empty means a single, non-localized
+  /// page. When set, the builder generates one page per locale (with reciprocal
+  /// `hreflang` alternates) and tags each page's [SeoParams.locale] so
+  /// `metadata`/`content` can translate.
+  final List<String> locales;
 
   final Future<List<SeoParams>> Function()? _params;
   final FutureOr<SeoMetadata> Function(SeoParams) _metadata;
@@ -45,17 +52,24 @@ class SeoRoute {
   /// A parameterized page. [params] enumerates which pages exist (the analogue
   /// of Expo's `generateStaticParams`); [metadata] and [content] receive the
   /// [SeoParams] for each page.
+  ///
+  /// Pass [locales] to generate the route in several languages; each page's
+  /// [SeoParams.locale] is set so the callbacks can translate. A localized
+  /// fixed page is `params: () async => const [SeoParams.empty]` with [locales]
+  /// set.
   factory SeoRoute.dynamic({
     required String path,
     required Future<List<SeoParams>> Function() params,
     required FutureOr<SeoMetadata> Function(SeoParams) metadata,
     required FutureOr<SeoNode> Function(SeoParams, SeoHtml) content,
+    List<String> locales = const [],
   }) {
     return SeoRoute._(
       path: path,
       params: params,
       metadata: metadata,
       content: content,
+      locales: locales,
     );
   }
 

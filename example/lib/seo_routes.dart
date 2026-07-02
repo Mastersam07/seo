@@ -98,4 +98,23 @@ final List<SeoRoute> seoRoutes = [
       ]);
     },
   ),
+  SeoRoute.dynamic(
+    path: '/about',
+    locales: const ['en', 'fr'],
+    params: () async => const [SeoParams.empty],
+    metadata: (p) => SeoMetadata(
+      title: p.locale == 'fr' ? 'À propos - Sortd' : 'About - Sortd',
+      description: p.locale == 'fr'
+          ? 'Sortd partage les dépenses équitablement.'
+          : 'Sortd splits shared costs fairly.',
+    ),
+    content: (p, b) => b.article([
+      b.h1(p.locale == 'fr' ? 'À propos de Sortd' : 'About Sortd'),
+      b.p(
+        p.locale == 'fr'
+            ? 'Sortd aide les colocataires à partager les factures.'
+            : 'Sortd helps housemates split bills.',
+      ),
+    ]),
+  ),
 ];

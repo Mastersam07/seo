@@ -741,6 +741,60 @@ void main() {
     });
   });
 
+  group('sitemap sharding', () {
+    SitemapEntry loc(String l) => (
+      loc: l,
+      lastmod: null,
+      changeFreq: null,
+      priority: null,
+      images: const <String>[],
+      alternates: const <String, String>{},
+    );
+
+    test('single sitemap.xml under the shard limit', () {
+      final files = <String, String>{};
+      SitemapShardWriter(
+          siteBase: 'https://x.dev',
+          write: (n, c) => files[n] = c,
+          limit: 5,
+        )
+        ..add(loc('https://x.dev/a'))
+        ..finish();
+      expect(files.keys, ['sitemap.xml']);
+      expect(files['sitemap.xml'], contains('<urlset'));
+      expect(files['sitemap.xml'], contains('https://x.dev/a'));
+    });
+
+    test('shards and writes an index past the limit', () {
+      final files = <String, String>{};
+      final w = SitemapShardWriter(
+        siteBase: 'https://x.dev',
+        write: (n, c) => files[n] = c,
+        limit: 2,
+      );
+      for (var i = 1; i <= 5; i++) {
+        w.add(loc('https://x.dev/p$i'));
+      }
+      w.finish();
+
+      expect(
+        files.keys,
+        containsAll([
+          'sitemap-1.xml',
+          'sitemap-2.xml',
+          'sitemap-3.xml',
+          'sitemap.xml',
+        ]),
+      );
+      expect(files['sitemap.xml'], contains('<sitemapindex'));
+      expect(
+        files['sitemap.xml'],
+        contains('<loc>https://x.dev/sitemap-1.xml</loc>'),
+      );
+      expect(files['sitemap-1.xml'], contains('<urlset'));
+    });
+  });
+
   group('incremental cache', () {
     test('contentHash is stable and change-sensitive', () {
       expect(contentHash('abc'), contentHash('abc'));
@@ -1089,6 +1143,49 @@ void main() {
       final third = await SeoBuilder([post('v2')]).run(args);
       expect(third.pageCount, 1);
       expect(third.skipped, 0);
+    });
+
+    test('paramsStream generates a page per yielded param', () async {
+      final dir = tempWithShell(
+        '<!DOCTYPE html><html><head><base href="/"></head>'
+        '<body></body></html>',
+      );
+      final route = SeoRoute.dynamic(
+        path: '/p/[id]',
+        paramsStream: () async* {
+          for (final id in ['a', 'b', 'c']) {
+            yield SeoParams({'id': id});
+          }
+        },
+        metadata: (_) => const SeoMetadata(title: 't', description: 'd'),
+        content: (_, b) => b.h1('x'),
+      );
+      final result = await SeoBuilder([route]).run(['--output', dir.path]);
+      expect(result.pageCount, 3);
+      expect(File('${dir.path}/p/a/index.html').existsSync(), isTrue);
+      expect(File('${dir.path}/p/c/index.html').existsSync(), isTrue);
+    });
+
+    test('dynamic route needs exactly one of params/paramsStream', () {
+      md() => const SeoMetadata(title: 't', description: 'd');
+      expect(
+        () => SeoRoute.dynamic(
+          path: '/p',
+          metadata: (_) => md(),
+          content: (_, b) => b.p('x'),
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => SeoRoute.dynamic(
+          path: '/p',
+          params: () async => const [],
+          paramsStream: () async* {},
+          metadata: (_) => md(),
+          content: (_, b) => b.p('x'),
+        ),
+        throwsArgumentError,
+      );
     });
 
     test('missing shell reports a failure and exits non-zero', () async {

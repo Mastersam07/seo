@@ -14,10 +14,12 @@ class SeoRoute {
   SeoRoute._({
     required this.path,
     required Future<List<SeoParams>> Function()? params,
+    required Stream<SeoParams> Function()? paramsStream,
     required FutureOr<SeoMetadata> Function(SeoParams) metadata,
     required FutureOr<SeoNode> Function(SeoParams, SeoHtml) content,
     this.locales = const [],
   }) : _params = params,
+       _paramsStream = paramsStream,
        _metadata = metadata,
        _content = content;
 
@@ -32,6 +34,7 @@ class SeoRoute {
   final List<String> locales;
 
   final Future<List<SeoParams>> Function()? _params;
+  final Stream<SeoParams> Function()? _paramsStream;
   final FutureOr<SeoMetadata> Function(SeoParams) _metadata;
   final FutureOr<SeoNode> Function(SeoParams, SeoHtml) _content;
 
@@ -44,6 +47,7 @@ class SeoRoute {
     return SeoRoute._(
       path: path,
       params: null,
+      paramsStream: null,
       metadata: (_) => metadata(),
       content: (_, b) => content(b),
     );
@@ -53,34 +57,57 @@ class SeoRoute {
   /// of Expo's `generateStaticParams`); [metadata] and [content] receive the
   /// [SeoParams] for each page.
   ///
+  /// For very large catalogs, pass [paramsStream] instead of [params] to yield
+  /// pages lazily (e.g. as you page through an API), so the full list is never
+  /// held in memory. Provide exactly one of [params] or [paramsStream].
+  ///
   /// Pass [locales] to generate the route in several languages; each page's
   /// [SeoParams.locale] is set so the callbacks can translate. A localized
   /// fixed page is `params: () async => const [SeoParams.empty]` with [locales]
   /// set.
   factory SeoRoute.dynamic({
     required String path,
-    required Future<List<SeoParams>> Function() params,
+    Future<List<SeoParams>> Function()? params,
+    Stream<SeoParams> Function()? paramsStream,
     required FutureOr<SeoMetadata> Function(SeoParams) metadata,
     required FutureOr<SeoNode> Function(SeoParams, SeoHtml) content,
     List<String> locales = const [],
   }) {
+    if ((params == null) == (paramsStream == null)) {
+      throw ArgumentError(
+        'SeoRoute.dynamic needs exactly one of params or paramsStream.',
+      );
+    }
     return SeoRoute._(
       path: path,
       params: params,
+      paramsStream: paramsStream,
       metadata: metadata,
       content: content,
       locales: locales,
     );
   }
 
-  bool get isDynamic => _params != null;
+  bool get isDynamic => _params != null || _paramsStream != null;
 
-  /// The set of pages to generate. Static routes yield a single empty-params
-  /// page.
-  Future<List<SeoParams>> resolveParams() async {
-    if (_params == null) return const [SeoParams.empty];
-    return _params();
+  /// The pages to generate, streamed. Static routes yield a single empty-params
+  /// page; list-based routes yield each entry; streaming routes are passed
+  /// through lazily.
+  Stream<SeoParams> resolveParamsStream() async* {
+    if (_paramsStream != null) {
+      yield* _paramsStream();
+    } else if (_params != null) {
+      for (final p in await _params()) {
+        yield p;
+      }
+    } else {
+      yield SeoParams.empty;
+    }
   }
+
+  /// Collects [resolveParamsStream] into a list. Convenient for small routes and
+  /// tests; the builder streams instead so it never materializes large sets.
+  Future<List<SeoParams>> resolveParams() => resolveParamsStream().toList();
 
   Future<SeoMetadata> metadataFor(SeoParams p) async => _metadata(p);
 

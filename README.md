@@ -104,9 +104,11 @@ final seoRoutes = <SeoRoute>[
 
   SeoRoute.dynamic(
     path: '/post/[slug]',
-    params: () async => (await api.allPosts())
-        .map((p) => SeoParams({'slug': p.slug}))
-        .toList(),
+    // Return one SeoParams per page. Page through your API if it paginates;
+    // for very large catalogs, stream them instead (see Scaling large sites).
+    params: () async => [
+      for (final p in await api.allPosts()) SeoParams({'slug': p.slug}),
+    ],
     metadata: (p) async {
       final post = await api.postBySlug(p['slug']);
       return SeoMetadata(
@@ -346,26 +348,51 @@ representation to keep in sync.
 
 **Most projects can ignore this.** A full rebuild of a landing page, pricing,
 docs, and a few hundred blog posts takes seconds — just run the generator every
-deploy. This section is only for large, data-driven catalogs (thousands of
-pages) where re-running `metadata`/`content` per page — typically an API call
-each — makes full rebuilds slow.
+deploy. This section is only for large, data-driven catalogs (thousands to
+millions of pages). Three things matter at that scale:
 
-For that case, `--incremental` skips pages that haven't changed. Attach a cheap
-change key to each page via `SeoParams.version` — anything that changes when the
-page's content does, like the record's `updatedAt`:
+**Incremental — skip unchanged pages.** `--incremental` skips pages that haven't
+changed. Attach a cheap change key to each page via `SeoParams.version` —
+anything that changes when the page's content does, like the record's
+`updatedAt`. On the next `--incremental` run, a page whose `version` matches the
+last build is skipped **without** calling `metadata`/`content`, so only what
+actually changed is re-rendered. A manifest (`.seo_seed_cache.json`) is kept in
+the output dir; a fresh `flutter build web` or a config change invalidates it and
+regenerates everything. Without a `version`, `--incremental` still avoids
+rewriting unchanged files but can't skip the compute.
+
+**Stream, don't materialize.** For a catalog that doesn't fit comfortably in
+memory, use `paramsStream` instead of `params` so pages are yielded lazily as
+you page through your API — the full list is never held at once:
 
 ```dart
-params: () async => (await api.allPosts())
-    .map((p) => SeoParams({'slug': p.slug}, version: p.updatedAt.toIso8601String()))
-    .toList(),
+SeoRoute.dynamic(
+  path: '/post/[slug]',
+  paramsStream: () async* {                  // page through your API, yield as you go
+    String? cursor;
+    do {
+      final page = await api.posts(cursor: cursor);
+      for (final p in page.items) {
+        yield SeoParams({'slug': p.slug}, version: p.updatedAt.toIso8601String());
+      }
+      cursor = page.nextCursor;
+    } while (cursor != null);
+  },
+  metadata: (p) async { /* ... */ },
+  content: (p, b) async { /* ... */ },
+);
 ```
 
-On the next `--incremental` run, a page whose `version` matches the last build
-is skipped **without** calling `metadata`/`content`, so only what actually
-changed is re-rendered. A manifest (`.seo_seed_cache.json`) is kept in the
-output dir; a fresh `flutter build web` (new shell) or a config change
-invalidates it and regenerates everything. Without a `version`, `--incremental`
-still avoids rewriting unchanged files but can't skip the compute.
+**Sitemaps shard automatically.** A single `sitemap.xml` is invalid past 50,000
+URLs, so once you cross that the generator writes `sitemap-1.xml`,
+`sitemap-2.xml`, … and turns `sitemap.xml` into a sitemap **index** over them
+(robots.txt keeps pointing at `sitemap.xml`). Nothing to configure.
+
+**And run the build against production, read-only data.** Whatever
+`params`/`metadata`/`content` read at build time is what gets indexed — point
+your API client at production (via env / `--dart-define`) in CI, don't deploy a
+staging-built site, and use `--dry-run` to sanity-check the page count before a
+real build.
 
 ## Build output & CI
 

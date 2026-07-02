@@ -57,6 +57,69 @@ String renderSitemap(Iterable<SitemapEntry> entries) {
   return out.toString();
 }
 
+/// Formats a sitemap index listing the shard [sitemapUrls], written as the
+/// top-level `sitemap.xml` when a site has more URLs than fit in one file.
+String renderSitemapIndex(Iterable<String> sitemapUrls) {
+  final out = StringBuffer();
+  out.writeln('<?xml version="1.0" encoding="UTF-8"?>');
+  out.writeln(
+    '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+  );
+  for (final url in sitemapUrls) {
+    out.writeln('  <sitemap><loc>${escapeHtml(url)}</loc></sitemap>');
+  }
+  out.writeln('</sitemapindex>');
+  return out.toString();
+}
+
+/// Collects sitemap entries and writes them out, splitting into
+/// `sitemap-N.xml` shards once a file would exceed [limit] URLs (the
+/// sitemaps.org cap is 50,000). With one shard it writes a plain
+/// `sitemap.xml`; with several it writes a `sitemap.xml` index over them.
+///
+/// [write] is injected so the caller owns file IO (and can skip it on a dry
+/// run); buffering to [limit] keeps memory bounded for very large sites.
+class SitemapShardWriter {
+  SitemapShardWriter({
+    required this.siteBase,
+    required this.write,
+    this.limit = 50000,
+  });
+
+  final String siteBase;
+  final void Function(String filename, String content) write;
+  final int limit;
+
+  final List<SitemapEntry> _buffer = [];
+  final List<String> _shards = [];
+
+  void add(SitemapEntry entry) {
+    _buffer.add(entry);
+    if (_buffer.length >= limit) _flushShard();
+  }
+
+  void _flushShard() {
+    final name = 'sitemap-${_shards.length + 1}.xml';
+    write(name, renderSitemap(_buffer));
+    _shards.add(name);
+    _buffer.clear();
+  }
+
+  /// Writes any remaining entries and the top-level `sitemap.xml` (a single
+  /// urlset when everything fit in one shard, otherwise a sitemap index).
+  void finish() {
+    if (_shards.isEmpty) {
+      write('sitemap.xml', renderSitemap(_buffer));
+      return;
+    }
+    if (_buffer.isNotEmpty) _flushShard();
+    write(
+      'sitemap.xml',
+      renderSitemapIndex([for (final s in _shards) '$siteBase/$s']),
+    );
+  }
+}
+
 /// A `<lastmod>` value in W3C `YYYY-MM-DD` form (UTC).
 String _isoDate(DateTime d) {
   final u = d.toUtc();

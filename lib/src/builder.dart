@@ -7,6 +7,8 @@ import 'package:html/parser.dart' as html;
 import 'head.dart';
 import 'node.dart';
 import 'params.dart';
+import 'paths.dart';
+import 'robots.dart';
 import 'route.dart';
 import 'serialize.dart';
 import 'sitemap.dart';
@@ -77,6 +79,8 @@ class SeoBuilder {
 
     var pageCount = 0;
     final failures = <SeoBuildFailure>[];
+    final locs =
+        <String>[]; // absolute URLs of indexable pages, for the sitemap
     for (final route in routes) {
       final List<SeoParams> paramSets;
       try {
@@ -95,10 +99,14 @@ class SeoBuilder {
             seed: serializeNode(node),
             baseHref: effectiveBaseHref,
           );
-          final dir = _pageDir(output, route.resolvePath(params));
+          final path = route.resolvePath(params);
+          final dir = _pageDir(output, path);
           Directory(dir).createSync(recursive: true);
           File('$dir/index.html').writeAsStringSync(page);
           pageCount++;
+          if (siteBase case final base? when meta.indexable) {
+            locs.add(canonicalizeUrl(resolveUrl(path, base)));
+          }
         } catch (e) {
           failures.add(
             SeoBuildFailure(
@@ -113,8 +121,10 @@ class SeoBuilder {
 
     if (siteBase case final base?) {
       try {
-        final sitemap = await renderSitemap(routes, base);
-        File('$output/sitemap.xml').writeAsStringSync(sitemap);
+        File('$output/sitemap.xml').writeAsStringSync(renderSitemap(locs));
+        File(
+          '$output/robots.txt',
+        ).writeAsStringSync(renderRobots('$base/sitemap.xml'));
       } catch (e) {
         failures.add(SeoBuildFailure(route: '(sitemap)', message: '$e'));
       }
@@ -139,7 +149,7 @@ class SeoBuilder {
     if (result.ok) {
       stdout.writeln(
         'seo_seed: generated ${result.pageCount} page(s)'
-        '${hasSitemap ? ' + sitemap.xml' : ''} in ${result.output}',
+        '${hasSitemap ? ' + sitemap.xml + robots.txt' : ''} in ${result.output}',
       );
       return;
     }

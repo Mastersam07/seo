@@ -5,6 +5,7 @@ import 'package:seo_seed/seo_seed.dart';
 import 'package:seo_seed/src/serialize.dart';
 import 'package:seo_seed/src/head.dart';
 import 'package:seo_seed/src/paths.dart';
+import 'package:seo_seed/src/robots.dart';
 import 'package:seo_seed/src/sitemap.dart';
 import 'package:test/test.dart';
 
@@ -365,14 +366,14 @@ void main() {
       expect(head, isNot(contains('/hello/"')));
     });
 
-    test('sitemap loc has no trailing slash', () async {
-      final route = SeoRoute.static(
-        path: '/pricing/',
-        metadata: () => const SeoMetadata(title: 't', description: 'd'),
-        content: (b) => b.p('x'),
-      );
-      final xml = await renderSitemap([route], 'https://x.dev/');
+    test('sitemap formats each loc into a url entry', () {
+      final xml = renderSitemap([
+        'https://x.dev/pricing',
+        'https://x.dev/post/hi',
+      ]);
       expect(xml, contains('<loc>https://x.dev/pricing</loc>'));
+      expect(xml, contains('<loc>https://x.dev/post/hi</loc>'));
+      expect(xml, contains('<urlset'));
     });
   });
 
@@ -432,6 +433,26 @@ void main() {
         const SeoMetadata(title: 't', description: 'd', canonical: '/post/hi'),
       );
       expect(head, contains('rel="canonical" href="/post/hi"'));
+    });
+  });
+
+  group('robots.txt and noindex', () {
+    test('indexable reflects the robots directive', () {
+      SeoMetadata meta(String? robots) =>
+          SeoMetadata(title: 't', description: 'd', robots: robots);
+      expect(meta(null).indexable, isTrue);
+      expect(meta('index, follow').indexable, isTrue);
+      expect(meta('noindex').indexable, isFalse);
+      expect(meta('noindex, follow').indexable, isFalse);
+      expect(meta('none').indexable, isFalse);
+    });
+
+    test('renderRobots allows all and points at the sitemap', () {
+      final txt = renderRobots('https://x.dev/sitemap.xml');
+      expect(txt, contains('User-agent: *'));
+      expect(txt, contains('Allow: /'));
+      expect(txt, contains('Sitemap: https://x.dev/sitemap.xml'));
+      expect(txt, isNot(contains('Disallow')));
     });
   });
 
@@ -539,6 +560,41 @@ void main() {
       );
       expect(sitemap, contains('https://example.com/app/pricing'));
     });
+
+    test(
+      'writes robots.txt and omits noindex pages from the sitemap',
+      () async {
+        final dir = tempWithShell(
+          '<!DOCTYPE html><html><head><base href="/"></head>'
+          '<body></body></html>',
+        );
+        final secret = SeoRoute.static(
+          path: '/secret',
+          metadata: () => const SeoMetadata(
+            title: 'Secret',
+            description: 'd',
+            robots: 'noindex, follow',
+          ),
+          content: (b) => b.h1('secret'),
+        );
+        await SeoBuilder([
+          pricing(),
+          secret,
+        ]).run(['--output', dir.path, '--base-url', 'https://example.com']);
+
+        // The noindex page is still generated (so crawlers see the meta)...
+        final page = File('${dir.path}/secret/index.html').readAsStringSync();
+        expect(page, contains('name="robots" content="noindex, follow"'));
+
+        // ...but is kept out of the sitemap, while the indexable page stays.
+        final sitemap = File('${dir.path}/sitemap.xml').readAsStringSync();
+        expect(sitemap, contains('https://example.com/pricing'));
+        expect(sitemap, isNot(contains('/secret')));
+
+        final robots = File('${dir.path}/robots.txt').readAsStringSync();
+        expect(robots, contains('Sitemap: https://example.com/sitemap.xml'));
+      },
+    );
 
     test('missing shell reports a failure and exits non-zero', () async {
       final saved = exitCode;

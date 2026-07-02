@@ -70,4 +70,15 @@ class SeoMetadata {
 
   /// Any additional `<meta name=... content=...>` pairs.
   final Map<String, String> extraMeta;
+
+  /// Whether this page should be advertised in the sitemap: false when [robots]
+  /// opts out of indexing (`noindex`, or the `none` directive). The page is
+  /// still generated and crawlable so the `noindex` meta is actually seen — it
+  /// is only kept out of the sitemap, keeping the two signals consistent.
+  bool get indexable {
+    if (robots?.toLowerCase() case final r?) {
+      return !(r.contains('noindex') || RegExp(r'\bnone\b').hasMatch(r));
+    }
+    return true;
+  }
 }

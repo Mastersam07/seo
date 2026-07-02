@@ -32,11 +32,21 @@ final _posts = <_Post>[
 final List<SeoRoute> seoRoutes = [
   SeoRoute.static(
     path: '/pricing',
-    metadata: () => const SeoMetadata(
+    metadata: () => SeoMetadata(
       title: 'Pricing - Sortd',
       description: 'Split bills, settle up, done. See Sortd pricing.',
       canonical: '/pricing',
-      openGraph: OpenGraph(image: '/og/pricing.png'),
+      openGraph: const OpenGraph(image: '/og/pricing.png'),
+      jsonLd: SeoJsonLd.faq(const [
+        (
+          question: 'Is Sortd free?',
+          answer: 'Yes, Sortd is free for personal groups.',
+        ),
+        (
+          question: 'What do paid plans add?',
+          answer: 'Receipt scanning and multi-currency support.',
+        ),
+      ]),
     ),
     content: (b) => b.article([
       b.h1('Simple pricing'),

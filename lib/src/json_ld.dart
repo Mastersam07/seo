@@ -61,4 +61,72 @@ class SeoJsonLd {
       ],
     });
   }
+
+  /// schema.org `Organization`, typically emitted on a landing page.
+  /// [sameAs] lists social/profile URLs that represent the same entity.
+  factory SeoJsonLd.organization({
+    required String name,
+    required String url,
+    String? logo,
+    List<String> sameAs = const [],
+  }) {
+    return SeoJsonLd.raw({
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      'name': name,
+      'url': url,
+      'logo': ?logo,
+      if (sameAs.isNotEmpty) 'sameAs': sameAs,
+    });
+  }
+
+  /// schema.org `Product`. When [price] is set an `Offer` is included; prices
+  /// are strings (e.g. `'9.99'`) to avoid floating-point rounding, and
+  /// [availability] is a schema.org URL such as `https://schema.org/InStock`.
+  factory SeoJsonLd.product({
+    required String name,
+    String? description,
+    String? image,
+    String? brand,
+    String? sku,
+    String? price,
+    String? priceCurrency,
+    String? availability,
+    String? url,
+  }) {
+    return SeoJsonLd.raw({
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      'name': name,
+      'description': ?description,
+      'image': ?image,
+      if (brand case final b?) 'brand': {'@type': 'Brand', 'name': b},
+      'sku': ?sku,
+      'url': ?url,
+      if (price case final p?)
+        'offers': {
+          '@type': 'Offer',
+          'price': p,
+          'priceCurrency': ?priceCurrency,
+          'availability': ?availability,
+          'url': ?url,
+        },
+    });
+  }
+
+  /// schema.org `FAQPage`. [items] is ordered question -> answer.
+  factory SeoJsonLd.faq(List<({String question, String answer})> items) {
+    return SeoJsonLd.raw({
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      'mainEntity': [
+        for (final item in items)
+          {
+            '@type': 'Question',
+            'name': item.question,
+            'acceptedAnswer': {'@type': 'Answer', 'text': item.answer},
+          },
+      ],
+    });
+  }
 }

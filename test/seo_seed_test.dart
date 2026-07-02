@@ -168,6 +168,78 @@ void main() {
     });
   });
 
+  group('JSON-LD schemas', () {
+    test('organization emits name, url, logo and sameAs', () {
+      final d = SeoJsonLd.organization(
+        name: 'Sortd',
+        url: 'https://sortd.app',
+        logo: 'https://sortd.app/logo.png',
+        sameAs: const ['https://twitter.com/sortd'],
+      ).data;
+      expect(d['@type'], 'Organization');
+      expect(d['name'], 'Sortd');
+      expect(d['logo'], 'https://sortd.app/logo.png');
+      expect(d['sameAs'], ['https://twitter.com/sortd']);
+    });
+
+    test('organization omits empty optional fields', () {
+      final d = SeoJsonLd.organization(name: 'x', url: 'https://x.dev').data;
+      expect(d.containsKey('sameAs'), isFalse);
+      expect(d.containsKey('logo'), isFalse);
+    });
+
+    test('product with a price includes a well-formed Offer', () {
+      final d = SeoJsonLd.product(
+        name: 'Pro',
+        brand: 'Sortd',
+        price: '9.99',
+        priceCurrency: 'USD',
+        availability: 'https://schema.org/InStock',
+      ).data;
+      expect(d['@type'], 'Product');
+      expect((d['brand'] as Map<String, dynamic>)['@type'], 'Brand');
+      final offer = d['offers'] as Map<String, dynamic>;
+      expect(offer['@type'], 'Offer');
+      expect(offer['price'], '9.99');
+      expect(offer['priceCurrency'], 'USD');
+      expect(offer['availability'], 'https://schema.org/InStock');
+    });
+
+    test('product without a price has no Offer', () {
+      expect(SeoJsonLd.product(name: 'Free').data.containsKey('offers'), false);
+    });
+
+    test('faq nests questions and accepted answers', () {
+      final d = SeoJsonLd.faq(const [
+        (question: 'Is it free?', answer: 'Yes for personal use.'),
+      ]).data;
+      expect(d['@type'], 'FAQPage');
+      final q =
+          (d['mainEntity'] as List<dynamic>).first as Map<String, dynamic>;
+      expect(q['@type'], 'Question');
+      expect(q['name'], 'Is it free?');
+      expect(
+        (q['acceptedAnswer'] as Map<String, dynamic>)['text'],
+        'Yes for personal use.',
+      );
+    });
+
+    test('every factory declares the schema.org context and a type', () {
+      final blocks = [
+        SeoJsonLd.article(headline: 'h'),
+        SeoJsonLd.website(name: 'n', url: 'https://x.dev'),
+        SeoJsonLd.breadcrumb(const [(name: 'Home', url: 'https://x.dev')]),
+        SeoJsonLd.organization(name: 'n', url: 'https://x.dev'),
+        SeoJsonLd.product(name: 'p'),
+        SeoJsonLd.faq(const [(question: 'q', answer: 'a')]),
+      ];
+      for (final block in blocks) {
+        expect(block.data['@context'], 'https://schema.org');
+        expect(block.data['@type'], isA<String>());
+      }
+    });
+  });
+
   group('injectPage', () {
     const shell = '''
 <!DOCTYPE html>

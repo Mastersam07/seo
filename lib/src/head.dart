@@ -8,8 +8,15 @@ import 'serialize.dart';
 ///
 /// Open Graph title/description fall back to the page title/description when
 /// not set explicitly, which is almost always what you want.
-String renderHead(SeoMetadata m) {
+///
+/// When [siteBase] is given (origin plus any base-href prefix), relative
+/// canonical, `og:url`, and image URLs are resolved to absolute — the form
+/// search engines and social scrapers prefer. Without it they stay relative.
+String renderHead(SeoMetadata m, {String? siteBase}) {
   final out = StringBuffer();
+
+  String? absolute(String? url) =>
+      url == null ? null : resolveUrl(url, siteBase);
 
   out.writeln('<title>${escapeHtml(m.title)}</title>');
   out.writeln(
@@ -17,7 +24,7 @@ String renderHead(SeoMetadata m) {
   );
 
   final canonical = switch (m.canonical) {
-    final c? => canonicalizeUrl(c),
+    final c? => absolute(canonicalizeUrl(c)),
     null => null,
   };
   if (canonical case final c?) {
@@ -39,9 +46,9 @@ String renderHead(SeoMetadata m) {
     tag('og:title', og.title ?? m.title);
     tag('og:description', og.description ?? m.description);
     tag('og:type', og.type);
-    tag('og:image', og.image);
+    tag('og:image', absolute(og.image));
     tag('og:url', switch (og.url) {
-      final u? => canonicalizeUrl(u),
+      final u? => absolute(canonicalizeUrl(u)),
       null => canonical,
     });
   }
@@ -56,7 +63,7 @@ String renderHead(SeoMetadata m) {
     tag('twitter:site', tw.site);
     tag('twitter:title', tw.title ?? m.title);
     tag('twitter:description', tw.description ?? m.description);
-    tag('twitter:image', tw.image ?? m.openGraph?.image);
+    tag('twitter:image', absolute(tw.image ?? m.openGraph?.image));
   }
 
   for (final MapEntry(:key, :value) in m.extraMeta.entries) {

@@ -70,6 +70,11 @@ class SeoBuilder {
       );
     }
 
+    final siteBase = switch (baseUrl) {
+      final url? => _siteBase(url, effectiveBaseHref),
+      null => null,
+    };
+
     var pageCount = 0;
     final failures = <SeoBuildFailure>[];
     for (final route in routes) {
@@ -86,7 +91,7 @@ class SeoBuilder {
           final node = await route.contentFor(params, const SeoHtml());
           final page = injectPage(
             shell,
-            head: renderHead(meta),
+            head: renderHead(meta, siteBase: siteBase),
             seed: serializeNode(node),
             baseHref: effectiveBaseHref,
           );
@@ -106,12 +111,9 @@ class SeoBuilder {
       }
     }
 
-    if (baseUrl case final url?) {
+    if (siteBase case final base?) {
       try {
-        final sitemap = await renderSitemap(
-          routes,
-          _siteBase(url, effectiveBaseHref),
-        );
+        final sitemap = await renderSitemap(routes, base);
         File('$output/sitemap.xml').writeAsStringSync(sitemap);
       } catch (e) {
         failures.add(SeoBuildFailure(route: '(sitemap)', message: '$e'));
@@ -123,7 +125,7 @@ class SeoBuilder {
       pageCount: pageCount,
       failures: failures,
     );
-    _report(result, hasSitemap: baseUrl != null, exit: 1);
+    _report(result, hasSitemap: siteBase != null, exit: 1);
     return result;
   }
 

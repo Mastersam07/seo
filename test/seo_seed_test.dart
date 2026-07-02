@@ -376,6 +376,65 @@ void main() {
     });
   });
 
+  group('canonical URL resolution', () {
+    test('resolveUrl joins a relative path onto the site base', () {
+      expect(resolveUrl('/pricing', 'https://x.dev'), 'https://x.dev/pricing');
+      expect(
+        resolveUrl('/pricing', 'https://x.dev/app'),
+        'https://x.dev/app/pricing',
+      );
+      expect(resolveUrl('og/a.png', 'https://x.dev'), 'https://x.dev/og/a.png');
+    });
+
+    test('resolveUrl leaves absolute and protocol-relative URLs alone', () {
+      expect(
+        resolveUrl('https://cdn.dev/a.png', 'https://x.dev'),
+        'https://cdn.dev/a.png',
+      );
+      expect(resolveUrl('//cdn.dev/a.png', 'https://x.dev'), '//cdn.dev/a.png');
+    });
+
+    test('resolveUrl with no site base returns the input unchanged', () {
+      expect(resolveUrl('/pricing', null), '/pricing');
+    });
+
+    test('renderHead makes canonical, og:url and images absolute', () {
+      final head = renderHead(
+        const SeoMetadata(
+          title: 't',
+          description: 'd',
+          canonical: '/post/hi/',
+          openGraph: OpenGraph(image: '/og/hi.png'),
+          twitter: TwitterCard(),
+        ),
+        siteBase: 'https://x.dev/app',
+      );
+      expect(
+        head,
+        contains('rel="canonical" href="https://x.dev/app/post/hi"'),
+      );
+      expect(
+        head,
+        contains('property="og:url" content="https://x.dev/app/post/hi"'),
+      );
+      expect(
+        head,
+        contains('property="og:image" content="https://x.dev/app/og/hi.png"'),
+      );
+      expect(
+        head,
+        contains('name="twitter:image" content="https://x.dev/app/og/hi.png"'),
+      );
+    });
+
+    test('renderHead without a site base keeps URLs relative', () {
+      final head = renderHead(
+        const SeoMetadata(title: 't', description: 'd', canonical: '/post/hi'),
+      );
+      expect(head, contains('rel="canonical" href="/post/hi"'));
+    });
+  });
+
   group('SeoBuilder.run', () {
     SeoRoute pricing() => SeoRoute.static(
       path: '/pricing',
@@ -452,6 +511,33 @@ void main() {
       } finally {
         exitCode = saved;
       }
+    });
+
+    test('page canonical is absolute and matches the sitemap', () async {
+      final dir = tempWithShell(
+        '<!DOCTYPE html><html><head><base href="/app/"></head>'
+        '<body></body></html>',
+      );
+      final route = SeoRoute.static(
+        path: '/pricing',
+        metadata: () => const SeoMetadata(
+          title: 't',
+          description: 'd',
+          canonical: '/pricing',
+        ),
+        content: (b) => b.h1('x'),
+      );
+      await SeoBuilder([
+        route,
+      ]).run(['--output', dir.path, '--base-url', 'https://example.com']);
+
+      final page = File('${dir.path}/pricing/index.html').readAsStringSync();
+      final sitemap = File('${dir.path}/sitemap.xml').readAsStringSync();
+      expect(
+        page,
+        contains('rel="canonical" href="https://example.com/app/pricing"'),
+      );
+      expect(sitemap, contains('https://example.com/app/pricing'));
     });
 
     test('missing shell reports a failure and exits non-zero', () async {

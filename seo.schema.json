@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/seo_seed/seo_seed/main/seo.schema.json",
+  "title": "seo_seed configuration",
+  "description": "Configuration for the seo_seed build generator, read from seo.yaml (or the path given to --config). Every key is optional and provides the default for the matching CLI flag, so a command-line flag always overrides the file.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "output": {
+      "type": "string",
+      "description": "Build output directory: where the Flutter web shell (index.html) is read from and generated pages are written. Overridden by --output / -o.",
+      "default": "build/web"
+    },
+    "base-url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Site origin, e.g. https://sortd.app. Setting it enables absolute canonical/Open Graph URLs and writes sitemap.xml and robots.txt. Overridden by --base-url.",
+      "examples": ["https://sortd.app"]
+    },
+    "base-href": {
+      "type": "string",
+      "description": "Overrides the shell's <base href>. Must start and end with a slash, e.g. '/app/' for subpath hosting or '/' for the root. Overridden by --base-href.",
+      "pattern": "^/(.*/)?$",
+      "examples": ["/", "/app/"]
+    },
+    "incremental": {
+      "type": "boolean",
+      "description": "Skip regenerating pages that have not changed since the last build, keyed by SeoParams.version. Overridden by --incremental.",
+      "default": false
+    },
+    "concurrency": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of pages to generate concurrently, overlapping I/O in the metadata/content callbacks (e.g. API calls). Cooperative concurrency in a single isolate, so size it to your API's rate limits. Overridden by --concurrency / -j.",
+      "default": 1
+    }
+  }
+}

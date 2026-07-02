@@ -1,0 +1,4 @@
+# yaml-language-server: $schema=../seo.schema.json
+base-url: https://sortd.app
+incremental: true
+concurrency: 8

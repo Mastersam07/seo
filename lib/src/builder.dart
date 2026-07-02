@@ -5,6 +5,7 @@ import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html;
 
 import 'cache.dart';
+import 'config.dart';
 import 'head.dart';
 import 'json_ld.dart';
 import 'locale.dart';
@@ -62,9 +63,28 @@ class SeoBuilder {
       :verbose,
       :incremental,
       :concurrency,
+      :buildWeb,
     ) = _parseOptions(
       args,
     );
+
+    if (buildWeb) {
+      final code = await _flutterBuildWeb(baseHref);
+      if (code != 0) {
+        final result = SeoBuildResult(
+          output: output,
+          pageCount: 0,
+          failures: [
+            SeoBuildFailure(
+              route: '(flutter build web)',
+              message: 'flutter build web exited with code $code',
+            ),
+          ],
+        );
+        _report(result, hasSitemap: false, dryRun: dryRun, exit: 3);
+        return result;
+      }
+    }
     final shellFile = File('$output/index.html');
     if (!shellFile.existsSync()) {
       final result = SeoBuildResult(
@@ -523,16 +543,24 @@ typedef _Options = ({
   bool verbose,
   bool incremental,
   int concurrency,
+  bool buildWeb,
 });
 
 _Options _parseOptions(List<String> args) {
-  var output = 'build/web';
-  String? baseHref;
-  String? baseUrl;
+  var configPath = 'seo.yaml';
+  for (var i = 0; i + 1 < args.length; i++) {
+    if (args[i] == '--config') configPath = args[i + 1];
+  }
+  final config = loadConfig(configPath);
+
+  var output = config['output'] as String? ?? 'build/web';
+  var baseHref = config['base-href'] as String?;
+  var baseUrl = config['base-url'] as String?;
   var dryRun = false;
   var verbose = false;
-  var incremental = false;
-  var concurrency = 1;
+  var incremental = config['incremental'] as bool? ?? false;
+  var concurrency = (config['concurrency'] as num?)?.toInt() ?? 1;
+  var buildWeb = false;
 
   for (var i = 0; i < args.length; i++) {
     String next() => (i + 1 < args.length) ? args[++i] : '';
@@ -543,6 +571,8 @@ _Options _parseOptions(List<String> args) {
         baseHref = next();
       case '--base-url':
         baseUrl = next();
+      case '--config':
+        next();
       case '--dry-run':
         dryRun = true;
       case '--verbose' || '-v':
@@ -550,7 +580,9 @@ _Options _parseOptions(List<String> args) {
       case '--incremental':
         incremental = true;
       case '--concurrency' || '-j':
-        concurrency = int.tryParse(next()) ?? 1;
+        concurrency = int.tryParse(next()) ?? concurrency;
+      case '--build-web':
+        buildWeb = true;
     }
   }
 
@@ -564,5 +596,18 @@ _Options _parseOptions(List<String> args) {
     verbose: verbose,
     incremental: incremental,
     concurrency: concurrency < 1 ? 1 : concurrency,
+    buildWeb: buildWeb,
   );
+}
+
+/// Runs `flutter build web` (streaming its output), forwarding [baseHref] when
+/// set, and returns the process exit code. Requires `flutter` on PATH and the
+/// current directory to be the Flutter project.
+Future<int> _flutterBuildWeb(String? baseHref) async {
+  final process = await Process.start('flutter', [
+    'build',
+    'web',
+    if (baseHref case final href?) ...['--base-href', href],
+  ], mode: ProcessStartMode.inheritStdio);
+  return process.exitCode;
 }

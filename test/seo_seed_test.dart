@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:html/parser.dart' as html;
 import 'package:seo_seed/seo_seed.dart';
 import 'package:seo_seed/src/cache.dart';
+import 'package:seo_seed/src/config.dart';
 import 'package:seo_seed/src/serialize.dart';
 import 'package:seo_seed/src/head.dart';
 import 'package:seo_seed/src/paths.dart';
@@ -795,6 +796,22 @@ void main() {
     });
   });
 
+  group('config file', () {
+    test('loadConfig reads keys and is empty when missing', () {
+      final dir = Directory.systemTemp.createTempSync('seo_cfg');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/seo.yaml')
+        ..writeAsStringSync(
+          'base-url: https://x.dev\nconcurrency: 4\nincremental: true\n',
+        );
+      final cfg = loadConfig(file.path);
+      expect(cfg['base-url'], 'https://x.dev');
+      expect(cfg['concurrency'], 4);
+      expect(cfg['incremental'], true);
+      expect(loadConfig('${dir.path}/nope.yaml'), isEmpty);
+    });
+  });
+
   group('incremental cache', () {
     test('contentHash is stable and change-sensitive', () {
       expect(contentHash('abc'), contentHash('abc'));
@@ -1217,6 +1234,43 @@ void main() {
       expect(result.pageCount, 8);
       expect(result.failures, isEmpty);
       expect(maxInFlight, greaterThan(1)); // proves pages ran concurrently
+    });
+
+    test('config file supplies defaults; a CLI flag overrides it', () async {
+      final dir = tempWithShell(
+        '<!DOCTYPE html><html><head><base href="/"></head>'
+        '<body></body></html>',
+      );
+      File(
+        '${dir.path}/seo.yaml',
+      ).writeAsStringSync('base-url: https://cfg.dev\n');
+      final config = '${dir.path}/seo.yaml';
+      SeoRoute page() => SeoRoute.static(
+        path: '/p',
+        metadata: () => const SeoMetadata(title: 't', description: 'd'),
+        content: (b) => b.h1('x'),
+      );
+
+      await SeoBuilder([
+        page(),
+      ]).run(['--output', dir.path, '--config', config]);
+      expect(
+        File('${dir.path}/sitemap.xml').readAsStringSync(),
+        contains('https://cfg.dev/p'),
+      );
+
+      await SeoBuilder([page()]).run([
+        '--output',
+        dir.path,
+        '--config',
+        config,
+        '--base-url',
+        'https://cli.dev',
+      ]);
+      expect(
+        File('${dir.path}/sitemap.xml').readAsStringSync(),
+        contains('https://cli.dev/p'),
+      );
     });
 
     test('missing shell reports a failure and exits non-zero', () async {

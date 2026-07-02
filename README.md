@@ -169,8 +169,30 @@ That's the whole flow. The common options:
 | `--base-href` | override the shell's `<base href>` (see below) |
 
 There are also `--dry-run` (preview without writing), `--verbose` (log each
-page), and `--incremental` (for large sites — see [Scaling large
+page), `--build-web` (run `flutter build web` first, so it's one command), and —
+for large sites — `--incremental` and `--concurrency` (see [Scaling large
 sites](#scaling-large-sites-optional)), but you don't need any of them to start.
+
+### Config file (optional)
+
+Put shared options in a `seo.yaml` next to your build tool so per-run commands
+shrink — CLI flags still override it:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/seo_seed/seo_seed/main/seo.schema.json
+base-url: https://sortd.app
+incremental: true
+concurrency: 8
+```
+
+Then `dart run tool/build_seo.dart` alone picks those up. Recognized keys:
+`output`, `base-url`, `base-href`, `incremental`, `concurrency` (pass
+`--config <path>` for a non-default location). A JSON Schema for editor
+autocomplete/validation ships as [`seo.schema.json`](seo.schema.json).
+
+For local iteration, just re-run the generator — `dart run` recompiles your
+routes fresh each time, and `--incremental` keeps it fast. To auto-rerun on
+save, wrap it in a generic file watcher (`watchexec`, `entr`).
 
 ## 3. Take over on the client
 
@@ -382,6 +404,12 @@ SeoRoute.dynamic(
   content: (p, b) async { /* ... */ },
 );
 ```
+
+**Overlap the API latency.** When `metadata`/`content` make an API call per
+page, `--concurrency N` (default 1) keeps up to N pages in flight so their I/O
+overlaps — the throughput lever for API-bound builds. It's cooperative
+concurrency in a single isolate (overlapping waits, not multiple CPU cores), so
+size N to your API's rate limits rather than your core count.
 
 **Sitemaps shard automatically.** A single `sitemap.xml` is invalid past 50,000
 URLs, so once you cross that the generator writes `sitemap-1.xml`,

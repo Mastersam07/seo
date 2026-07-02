@@ -17,6 +17,7 @@ export 'src/locale.dart';
 export 'src/node.dart' show SeoNode, SeoElement, SeoText, SeoHtml;
 export 'src/route.dart';
 export 'src/builder.dart';
+export 'src/renderer.dart';
 
 /// Client-side entry point. Call once in `main` before `runApp`.
 ///

@@ -182,50 +182,21 @@ class SeoBuilder {
           return;
         }
 
-        final pageUrl = switch (siteBase) {
-          final base? => switch (locale) {
-            final l? => localeStrategy.urlFor(l, routePath, base),
-            null => canonicalizeUrl(resolveUrl(routePath, base)),
-          },
-          null => null,
-        };
-
-        var alternates = const <String, String>{};
-        String? xDefault;
-        if (locale != null && siteBase != null) {
-          alternates = {
-            for (final l in route.locales)
-              l: localeStrategy.urlFor(l, routePath, siteBase),
-          };
-          final dflt = switch (defaultLocale) {
-            final d? when route.locales.contains(d) => d,
-            _ => route.locales.first,
-          };
-          xDefault = localeStrategy.urlFor(dflt, routePath, siteBase);
-        }
-
-        final meta = await route.metadataFor(params);
-        final node = await route.contentFor(params, const SeoHtml());
-        final page = injectPage(
-          shell,
-          head: renderHead(
-            meta,
-            siteBase: siteBase,
-            extraJsonLd: [
-              if (meta.breadcrumbs)
-                SeoJsonLd.breadcrumbTrail(path: pagePath, base: siteBase),
-            ],
-            alternates: alternates,
-            xDefault: xDefault,
-            selfCanonical: locale == null ? null : pageUrl,
-          ),
-          seed: serializeNode(node),
+        final rendered = await renderSeoPage(
+          route: route,
+          params: params,
+          locale: locale,
+          shell: shell,
           baseHref: effectiveBaseHref,
+          siteBase: siteBase,
+          localeStrategy: localeStrategy,
+          defaultLocale: defaultLocale,
         );
+        final page = rendered.html;
 
         SitemapEntry? entry;
-        if (pageUrl case final loc? when meta.indexable) {
-          final sm = meta.sitemap;
+        if (rendered.pageUrl case final loc? when rendered.meta.indexable) {
+          final sm = rendered.meta.sitemap;
           entry = (
             loc: loc,
             lastmod: sm?.lastmod,
@@ -235,7 +206,7 @@ class SeoBuilder {
               for (final image in sm?.images ?? const <String>[])
                 resolveUrl(image, siteBase),
             ],
-            alternates: alternates,
+            alternates: rendered.alternates,
           );
           sitemap?.add(entry);
         }
@@ -404,6 +375,88 @@ class SeoBuildFailure {
     'params': ?params,
     'message': message,
   };
+}
+
+/// The rendered result of one page: its final [html] plus the [meta] and URL
+/// info the caller needs (the builder for the sitemap, a server for headers).
+typedef SeoPage = ({
+  String html,
+  SeoMetadata meta,
+  String pagePath,
+  String? pageUrl,
+  Map<String, String> alternates,
+});
+
+/// Renders one page to its final HTML — the shared core used by both the
+/// build-time [SeoBuilder] and the request-time [SeoRenderer], so static and
+/// server-rendered output are byte-identical.
+///
+/// [params] should already carry the locale (via [SeoParams.withLocale]) when
+/// [locale] is non-null. [baseHref] is the effective base href; [siteBase] the
+/// origin+prefix used to absolutize URLs (null keeps them relative).
+Future<SeoPage> renderSeoPage({
+  required SeoRoute route,
+  required SeoParams params,
+  required String? locale,
+  required String shell,
+  required String baseHref,
+  String? siteBase,
+  SeoLocaleStrategy localeStrategy = const PathPrefixLocales(),
+  String? defaultLocale,
+}) async {
+  final routePath = route.resolvePath(params);
+  final pagePath = switch (locale) {
+    final l? => localeStrategy.pathFor(l, routePath),
+    null => routePath,
+  };
+  final pageUrl = switch (siteBase) {
+    final base? => switch (locale) {
+      final l? => localeStrategy.urlFor(l, routePath, base),
+      null => canonicalizeUrl(resolveUrl(routePath, base)),
+    },
+    null => null,
+  };
+
+  var alternates = const <String, String>{};
+  String? xDefault;
+  if (locale != null && siteBase != null) {
+    alternates = {
+      for (final l in route.locales)
+        l: localeStrategy.urlFor(l, routePath, siteBase),
+    };
+    final dflt = switch (defaultLocale) {
+      final d? when route.locales.contains(d) => d,
+      _ => route.locales.first,
+    };
+    xDefault = localeStrategy.urlFor(dflt, routePath, siteBase);
+  }
+
+  final meta = await route.metadataFor(params);
+  final node = await route.contentFor(params, const SeoHtml());
+  final html = injectPage(
+    shell,
+    head: renderHead(
+      meta,
+      siteBase: siteBase,
+      extraJsonLd: [
+        if (meta.breadcrumbs)
+          SeoJsonLd.breadcrumbTrail(path: pagePath, base: siteBase),
+      ],
+      alternates: alternates,
+      xDefault: xDefault,
+      selfCanonical: locale == null ? null : pageUrl,
+    ),
+    seed: serializeNode(node),
+    baseHref: baseHref,
+  );
+
+  return (
+    html: html,
+    meta: meta,
+    pagePath: pagePath,
+    pageUrl: pageUrl,
+    alternates: alternates,
+  );
 }
 
 /// Injects [head] and [seed] into the Flutter web [shell], returning the

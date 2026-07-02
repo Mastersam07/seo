@@ -422,6 +422,35 @@ your API client at production (via env / `--dart-define`) in CI, don't deploy a
 staging-built site, and use `--dry-run` to sanity-check the page count before a
 real build.
 
+## Server-side rendering (fresh per request)
+
+Static generation bakes a snapshot. When content changes constantly (prices,
+stock, personalized copy), render on demand instead: `SeoRenderer` runs the
+**same** route callbacks and page assembly the builder uses — so static and SSR
+output are byte-identical — but per request, so the data is always current.
+
+```dart
+final renderer = SeoRenderer(
+  seoRoutes,
+  shell: File('build/web/index.html').readAsStringSync(),
+  siteBase: 'https://sortd.app',
+);
+
+// In your server/edge handler:
+final html = await renderer.render(request.uri.path); // null → serve the shell
+```
+
+`render(path)` matches the URL to a route (including locale prefixes), returns
+fresh HTML, or null when nothing matches or the route rejects the params (e.g.
+an unknown id) — in which case you serve the app shell, exactly like the SPA
+rewrite for static hosting. The core is framework-agnostic;
+[`example/tool/serve_seo.dart`](example/tool/serve_seo.dart) is a runnable
+`dart:io` server (SSR + static assets + SPA fallback), and the same one-liner
+drops into an edge worker.
+
+Use static generation by default (cheapest, cacheable); reach for SSR only for
+the routes whose data can't be baked.
+
 ## Build output & CI
 
 `run()` never crashes on a bad route: it catches each failure, attributes it to
@@ -432,8 +461,7 @@ instead of shipping empty pages.
 
 ## What this does not do
 
-- No per-request server rendering (the Expo `output: "server"` tier — a later
-  addition via an edge adapter).
 - No widget-to-DOM rendering, and no scraping of the semantics tree. The content
   you want indexed is content you declare.
-- No cloaking: the seed must be a faithful subset of what users see.
+- No cloaking: the seed (static or server-rendered) must be a faithful subset of
+  what users see.

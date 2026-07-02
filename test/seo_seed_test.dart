@@ -812,6 +812,99 @@ void main() {
     });
   });
 
+  group('SeoRenderer (per-request)', () {
+    const shell =
+        '<!DOCTYPE html><html><head><base href="/"></head>'
+        '<body></body></html>';
+
+    test(
+      'renders a matched route and re-runs on every request (fresh)',
+      () async {
+        var price = 10;
+        final renderer = SeoRenderer(
+          [
+            SeoRoute.dynamic(
+              path: '/post/[slug]',
+              params: () async => const [],
+              metadata: (p) => SeoMetadata(
+                title: 'Post ${p['slug']}',
+                description: 'Price $price',
+                canonical: '/post/${p['slug']}',
+              ),
+              content: (p, b) => b.h1('Post ${p['slug']}'),
+            ),
+          ],
+          shell: shell,
+          siteBase: 'https://x.dev',
+        );
+
+        final first = await renderer.render('/post/hello');
+        expect(first, contains('<title>Post hello</title>'));
+        expect(first, contains('Price 10'));
+        expect(
+          first,
+          contains('rel="canonical" href="https://x.dev/post/hello"'),
+        );
+
+        price = 20; // the underlying data changed
+        final second = await renderer.render('/post/hello');
+        expect(second, contains('Price 20')); // re-rendered fresh, not cached
+      },
+    );
+
+    test('returns null for an unmatched path', () async {
+      final renderer = SeoRenderer([
+        SeoRoute.static(
+          path: '/pricing',
+          metadata: () => const SeoMetadata(title: 't', description: 'd'),
+          content: (b) => b.h1('x'),
+        ),
+      ], shell: shell);
+      expect(await renderer.render('/nope'), isNull);
+    });
+
+    test('returns null when the route rejects the params', () async {
+      final renderer = SeoRenderer([
+        SeoRoute.dynamic(
+          path: '/post/[slug]',
+          params: () async => const [],
+          metadata: (p) {
+            if (p['slug'] != 'real') throw StateError('not found');
+            return const SeoMetadata(title: 't', description: 'd');
+          },
+          content: (p, b) => b.h1('x'),
+        ),
+      ], shell: shell);
+      expect(await renderer.render('/post/missing'), isNull);
+      expect(await renderer.render('/post/real'), isNotNull);
+    });
+
+    test('matches a locale-prefixed path and translates', () async {
+      final renderer = SeoRenderer(
+        [
+          SeoRoute.dynamic(
+            path: '/about',
+            locales: const ['en', 'fr'],
+            params: () async => const [],
+            metadata: (p) => SeoMetadata(
+              title: p.locale == 'fr' ? 'À propos' : 'About',
+              description: 'd',
+            ),
+            content: (p, b) => b.h1('x'),
+          ),
+        ],
+        shell: shell,
+        siteBase: 'https://x.dev',
+        defaultLocale: 'en',
+      );
+
+      final fr = await renderer.render('/fr/about');
+      expect(fr, contains('<title>À propos</title>'));
+      expect(fr, contains('rel="canonical" href="https://x.dev/fr/about"'));
+      expect(fr, contains('hreflang="fr" href="https://x.dev/fr/about"'));
+    });
+  });
+
   group('incremental cache', () {
     test('contentHash is stable and change-sensitive', () {
       expect(contentHash('abc'), contentHash('abc'));

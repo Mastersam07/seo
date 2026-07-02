@@ -1,5 +1,32 @@
 import 'json_ld.dart';
 
+/// How often a page is expected to change, for the sitemap `<changefreq>` hint.
+enum SeoChangeFreq { always, hourly, daily, weekly, monthly, yearly, never }
+
+/// Per-page sitemap hints. All fields are optional; the sitemap emits only the
+/// ones you set.
+class SeoSitemap {
+  const SeoSitemap({
+    this.lastmod,
+    this.changeFreq,
+    this.priority,
+    this.images = const [],
+  });
+
+  /// When the page last meaningfully changed. Emitted as a `<lastmod>` date.
+  final DateTime? lastmod;
+
+  /// Expected change cadence, a hint crawlers may use for scheduling.
+  final SeoChangeFreq? changeFreq;
+
+  /// Relative importance within this site, `0.0`–`1.0` (clamped). Default `0.5`.
+  final double? priority;
+
+  /// Image URLs on the page, listed as image-sitemap entries. Relative paths
+  /// are resolved against the site base like other URLs.
+  final List<String> images;
+}
+
 /// Open Graph tags, used by social scrapers to build link previews.
 class OpenGraph {
   const OpenGraph({
@@ -53,6 +80,7 @@ class SeoMetadata {
     this.jsonLd,
     this.robots,
     this.extraMeta = const {},
+    this.sitemap,
   });
 
   final String title;
@@ -70,6 +98,10 @@ class SeoMetadata {
 
   /// Any additional `<meta name=... content=...>` pairs.
   final Map<String, String> extraMeta;
+
+  /// Optional sitemap hints (`lastmod`, `changefreq`, `priority`, images) for
+  /// this page's entry. Ignored for non-indexable pages, which are omitted.
+  final SeoSitemap? sitemap;
 
   /// Whether this page should be advertised in the sitemap: false when [robots]
   /// opts out of indexing (`noindex`, or the `none` directive). The page is

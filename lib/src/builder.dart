@@ -79,8 +79,7 @@ class SeoBuilder {
 
     var pageCount = 0;
     final failures = <SeoBuildFailure>[];
-    final locs =
-        <String>[]; // absolute URLs of indexable pages, for the sitemap
+    final entries = <SitemapEntry>[]; // indexable pages, for the sitemap
     for (final route in routes) {
       final List<SeoParams> paramSets;
       try {
@@ -105,7 +104,17 @@ class SeoBuilder {
           File('$dir/index.html').writeAsStringSync(page);
           pageCount++;
           if (siteBase case final base? when meta.indexable) {
-            locs.add(canonicalizeUrl(resolveUrl(path, base)));
+            final sm = meta.sitemap;
+            entries.add((
+              loc: canonicalizeUrl(resolveUrl(path, base)),
+              lastmod: sm?.lastmod,
+              changeFreq: sm?.changeFreq,
+              priority: sm?.priority,
+              images: [
+                for (final image in sm?.images ?? const <String>[])
+                  resolveUrl(image, base),
+              ],
+            ));
           }
         } catch (e) {
           failures.add(
@@ -121,7 +130,7 @@ class SeoBuilder {
 
     if (siteBase case final base?) {
       try {
-        File('$output/sitemap.xml').writeAsStringSync(renderSitemap(locs));
+        File('$output/sitemap.xml').writeAsStringSync(renderSitemap(entries));
         File(
           '$output/robots.txt',
         ).writeAsStringSync(renderRobots('$base/sitemap.xml'));

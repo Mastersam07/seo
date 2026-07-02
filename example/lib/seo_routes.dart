@@ -62,6 +62,10 @@ final List<SeoRoute> seoRoutes = [
           description: post.excerpt,
           datePublished: post.publishedAt,
         ),
+        sitemap: SeoSitemap(
+          lastmod: post.publishedAt,
+          changeFreq: SeoChangeFreq.monthly,
+        ),
       );
     },
     content: (params, b) async {

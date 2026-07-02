@@ -368,12 +368,46 @@ void main() {
 
     test('sitemap formats each loc into a url entry', () {
       final xml = renderSitemap([
-        'https://x.dev/pricing',
-        'https://x.dev/post/hi',
+        (
+          loc: 'https://x.dev/pricing',
+          lastmod: null,
+          changeFreq: null,
+          priority: null,
+          images: const <String>[],
+        ),
       ]);
       expect(xml, contains('<loc>https://x.dev/pricing</loc>'));
-      expect(xml, contains('<loc>https://x.dev/post/hi</loc>'));
       expect(xml, contains('<urlset'));
+    });
+
+    test('sitemap emits lastmod, changefreq, priority and images', () {
+      final xml = renderSitemap([
+        (
+          loc: 'https://x.dev/post/hi',
+          lastmod: DateTime.utc(2026, 1, 5),
+          changeFreq: SeoChangeFreq.weekly,
+          priority: 0.8,
+          images: const ['https://x.dev/og/hi.png'],
+        ),
+      ]);
+      expect(xml, contains('<lastmod>2026-01-05</lastmod>'));
+      expect(xml, contains('<changefreq>weekly</changefreq>'));
+      expect(xml, contains('<priority>0.8</priority>'));
+      expect(xml, contains('<image:loc>https://x.dev/og/hi.png</image:loc>'));
+      expect(xml, contains('xmlns:image='));
+    });
+
+    test('sitemap clamps priority into range', () {
+      final xml = renderSitemap([
+        (
+          loc: 'https://x.dev/a',
+          lastmod: null,
+          changeFreq: null,
+          priority: 5.0,
+          images: const <String>[],
+        ),
+      ]);
+      expect(xml, contains('<priority>1.0</priority>'));
     });
   });
 
@@ -595,6 +629,39 @@ void main() {
         expect(robots, contains('Sitemap: https://example.com/sitemap.xml'));
       },
     );
+
+    test('sitemap carries hints with images resolved to absolute', () async {
+      final dir = tempWithShell(
+        '<!DOCTYPE html><html><head><base href="/"></head>'
+        '<body></body></html>',
+      );
+      final route = SeoRoute.static(
+        path: '/pricing',
+        metadata: () => SeoMetadata(
+          title: 't',
+          description: 'd',
+          sitemap: SeoSitemap(
+            lastmod: DateTime.utc(2026, 2, 3),
+            changeFreq: SeoChangeFreq.monthly,
+            priority: 0.9,
+            images: const ['/og/pricing.png'],
+          ),
+        ),
+        content: (b) => b.h1('x'),
+      );
+      await SeoBuilder([
+        route,
+      ]).run(['--output', dir.path, '--base-url', 'https://example.com']);
+
+      final sitemap = File('${dir.path}/sitemap.xml').readAsStringSync();
+      expect(sitemap, contains('<lastmod>2026-02-03</lastmod>'));
+      expect(sitemap, contains('<changefreq>monthly</changefreq>'));
+      expect(sitemap, contains('<priority>0.9</priority>'));
+      expect(
+        sitemap,
+        contains('<image:loc>https://example.com/og/pricing.png</image:loc>'),
+      );
+    });
 
     test('missing shell reports a failure and exits non-zero', () async {
       final saved = exitCode;

@@ -10,6 +10,7 @@ import 'json_ld.dart';
 import 'locale.dart';
 import 'metadata.dart';
 import 'node.dart';
+import 'params.dart';
 import 'paths.dart';
 import 'robots.dart';
 import 'route.dart';
@@ -53,8 +54,17 @@ class SeoBuilder {
   /// summary is written to stderr, so the generator fails a CI pipeline cleanly
   /// instead of crashing with a stack trace or exiting 0 with broken output.
   Future<SeoBuildResult> run(List<String> args) async {
-    final (:output, :baseHref, :baseUrl, :dryRun, :verbose, :incremental) =
-        _parseOptions(args);
+    final (
+      :output,
+      :baseHref,
+      :baseUrl,
+      :dryRun,
+      :verbose,
+      :incremental,
+      :concurrency,
+    ) = _parseOptions(
+      args,
+    );
     final shellFile = File('$output/index.html');
     if (!shellFile.existsSync()) {
       final result = SeoBuildResult(
@@ -120,6 +130,134 @@ class SeoBuilder {
               if (!dryRun) File('$output/$name').writeAsStringSync(content);
             },
           );
+    Future<void> generateOne(
+      SeoRoute route,
+      SeoParams baseParams,
+      String? locale,
+    ) async {
+      final params = switch (locale) {
+        final l? => baseParams.withLocale(l),
+        null => baseParams,
+      };
+      try {
+        // Cheap path/URL work first (no metadata/content), so an unchanged
+        // page can be skipped without the expensive callbacks.
+        final routePath = route.resolvePath(params);
+        final pagePath = switch (locale) {
+          final l? => localeStrategy.pathFor(l, routePath),
+          null => routePath,
+        };
+        final dir = _pageDir(output, pagePath);
+        final file = '$dir/index.html';
+
+        if (cache != null &&
+            cache.unchangedByVersion(pagePath, params.version) &&
+            File(file).existsSync()) {
+          cache.carryForward(pagePath);
+          if (cache.sitemapFor(pagePath) case final sm?) {
+            sitemap?.add(_sitemapEntryFromJson(sm));
+          }
+          skipped++;
+          if (verbose) stdout.writeln('  skipped (unchanged) $file');
+          return;
+        }
+
+        final pageUrl = switch (siteBase) {
+          final base? => switch (locale) {
+            final l? => localeStrategy.urlFor(l, routePath, base),
+            null => canonicalizeUrl(resolveUrl(routePath, base)),
+          },
+          null => null,
+        };
+
+        var alternates = const <String, String>{};
+        String? xDefault;
+        if (locale != null && siteBase != null) {
+          alternates = {
+            for (final l in route.locales)
+              l: localeStrategy.urlFor(l, routePath, siteBase),
+          };
+          final dflt = switch (defaultLocale) {
+            final d? when route.locales.contains(d) => d,
+            _ => route.locales.first,
+          };
+          xDefault = localeStrategy.urlFor(dflt, routePath, siteBase);
+        }
+
+        final meta = await route.metadataFor(params);
+        final node = await route.contentFor(params, const SeoHtml());
+        final page = injectPage(
+          shell,
+          head: renderHead(
+            meta,
+            siteBase: siteBase,
+            extraJsonLd: [
+              if (meta.breadcrumbs)
+                SeoJsonLd.breadcrumbTrail(path: pagePath, base: siteBase),
+            ],
+            alternates: alternates,
+            xDefault: xDefault,
+            selfCanonical: locale == null ? null : pageUrl,
+          ),
+          seed: serializeNode(node),
+          baseHref: effectiveBaseHref,
+        );
+
+        SitemapEntry? entry;
+        if (pageUrl case final loc? when meta.indexable) {
+          final sm = meta.sitemap;
+          entry = (
+            loc: loc,
+            lastmod: sm?.lastmod,
+            changeFreq: sm?.changeFreq,
+            priority: sm?.priority,
+            images: [
+              for (final image in sm?.images ?? const <String>[])
+                resolveUrl(image, siteBase),
+            ],
+            alternates: alternates,
+          );
+          sitemap?.add(entry);
+        }
+
+        final hash = contentHash(page);
+        final unchangedWrite =
+            cache != null &&
+            cache.unchangedByHash(pagePath, hash) &&
+            File(file).existsSync();
+        if (!dryRun && !unchangedWrite) {
+          Directory(dir).createSync(recursive: true);
+          File(file).writeAsStringSync(page);
+        }
+        cache?.record(
+          pagePath,
+          version: params.version,
+          hash: hash,
+          sitemap: entry == null ? null : _sitemapEntryToJson(entry),
+        );
+        pageCount++;
+        if (verbose) {
+          final action = dryRun
+              ? 'would write'
+              : (unchangedWrite ? 'unchanged' : 'wrote');
+          stdout.writeln('  $action $file');
+        }
+      } catch (e) {
+        failures.add(
+          SeoBuildFailure(
+            route: route.path,
+            params: params.values,
+            message: '$e',
+          ),
+        );
+      }
+    }
+
+    // Bounded concurrency: up to [concurrency] pages in flight, so I/O in the
+    // metadata/content callbacks (typically API calls) overlaps. Dart is
+    // single-isolate, so the shared counters/writers are mutated safely between
+    // awaits, not truly in parallel.
+    final batch = <Future<void>>[];
     for (final route in routes) {
       final locales = route.locales.isEmpty
           ? const <String?>[null]
@@ -127,121 +265,10 @@ class SeoBuilder {
       try {
         await for (final baseParams in route.resolveParamsStream()) {
           for (final locale in locales) {
-            final params = switch (locale) {
-              final l? => baseParams.withLocale(l),
-              null => baseParams,
-            };
-            try {
-              // Cheap path/URL work first (no metadata/content), so an unchanged
-              // page can be skipped without the expensive callbacks.
-              final routePath = route.resolvePath(params);
-              final pagePath = switch (locale) {
-                final l? => localeStrategy.pathFor(l, routePath),
-                null => routePath,
-              };
-              final dir = _pageDir(output, pagePath);
-              final file = '$dir/index.html';
-
-              if (cache != null &&
-                  cache.unchangedByVersion(pagePath, params.version) &&
-                  File(file).existsSync()) {
-                cache.carryForward(pagePath);
-                if (cache.sitemapFor(pagePath) case final sm?) {
-                  sitemap?.add(_sitemapEntryFromJson(sm));
-                }
-                skipped++;
-                if (verbose) stdout.writeln('  skipped (unchanged) $file');
-                continue;
-              }
-
-              final pageUrl = switch (siteBase) {
-                final base? => switch (locale) {
-                  final l? => localeStrategy.urlFor(l, routePath, base),
-                  null => canonicalizeUrl(resolveUrl(routePath, base)),
-                },
-                null => null,
-              };
-
-              var alternates = const <String, String>{};
-              String? xDefault;
-              if (locale != null && siteBase != null) {
-                alternates = {
-                  for (final l in route.locales)
-                    l: localeStrategy.urlFor(l, routePath, siteBase),
-                };
-                final dflt = switch (defaultLocale) {
-                  final d? when route.locales.contains(d) => d,
-                  _ => route.locales.first,
-                };
-                xDefault = localeStrategy.urlFor(dflt, routePath, siteBase);
-              }
-
-              final meta = await route.metadataFor(params);
-              final node = await route.contentFor(params, const SeoHtml());
-              final page = injectPage(
-                shell,
-                head: renderHead(
-                  meta,
-                  siteBase: siteBase,
-                  extraJsonLd: [
-                    if (meta.breadcrumbs)
-                      SeoJsonLd.breadcrumbTrail(path: pagePath, base: siteBase),
-                  ],
-                  alternates: alternates,
-                  xDefault: xDefault,
-                  selfCanonical: locale == null ? null : pageUrl,
-                ),
-                seed: serializeNode(node),
-                baseHref: effectiveBaseHref,
-              );
-
-              SitemapEntry? entry;
-              if (pageUrl case final loc? when meta.indexable) {
-                final sm = meta.sitemap;
-                entry = (
-                  loc: loc,
-                  lastmod: sm?.lastmod,
-                  changeFreq: sm?.changeFreq,
-                  priority: sm?.priority,
-                  images: [
-                    for (final image in sm?.images ?? const <String>[])
-                      resolveUrl(image, siteBase),
-                  ],
-                  alternates: alternates,
-                );
-                sitemap?.add(entry);
-              }
-
-              final hash = contentHash(page);
-              final unchangedWrite =
-                  cache != null &&
-                  cache.unchangedByHash(pagePath, hash) &&
-                  File(file).existsSync();
-              if (!dryRun && !unchangedWrite) {
-                Directory(dir).createSync(recursive: true);
-                File(file).writeAsStringSync(page);
-              }
-              cache?.record(
-                pagePath,
-                version: params.version,
-                hash: hash,
-                sitemap: entry == null ? null : _sitemapEntryToJson(entry),
-              );
-              pageCount++;
-              if (verbose) {
-                final action = dryRun
-                    ? 'would write'
-                    : (unchangedWrite ? 'unchanged' : 'wrote');
-                stdout.writeln('  $action $file');
-              }
-            } catch (e) {
-              failures.add(
-                SeoBuildFailure(
-                  route: route.path,
-                  params: params.values,
-                  message: '$e',
-                ),
-              );
+            batch.add(generateOne(route, baseParams, locale));
+            if (batch.length >= concurrency) {
+              await Future.wait(batch);
+              batch.clear();
             }
           }
         }
@@ -249,6 +276,7 @@ class SeoBuilder {
         failures.add(SeoBuildFailure(route: route.path, message: '$e'));
       }
     }
+    await Future.wait(batch);
 
     if (siteBase case final base?) {
       try {
@@ -494,6 +522,7 @@ typedef _Options = ({
   bool dryRun,
   bool verbose,
   bool incremental,
+  int concurrency,
 });
 
 _Options _parseOptions(List<String> args) {
@@ -503,6 +532,7 @@ _Options _parseOptions(List<String> args) {
   var dryRun = false;
   var verbose = false;
   var incremental = false;
+  var concurrency = 1;
 
   for (var i = 0; i < args.length; i++) {
     String next() => (i + 1 < args.length) ? args[++i] : '';
@@ -519,6 +549,8 @@ _Options _parseOptions(List<String> args) {
         verbose = true;
       case '--incremental':
         incremental = true;
+      case '--concurrency' || '-j':
+        concurrency = int.tryParse(next()) ?? 1;
     }
   }
 
@@ -531,5 +563,6 @@ _Options _parseOptions(List<String> args) {
     dryRun: dryRun,
     verbose: verbose,
     incremental: incremental,
+    concurrency: concurrency < 1 ? 1 : concurrency,
   );
 }

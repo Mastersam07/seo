@@ -1188,6 +1188,37 @@ void main() {
       );
     });
 
+    test('concurrency overlaps pages and generates them all', () async {
+      final dir = tempWithShell(
+        '<!DOCTYPE html><html><head><base href="/"></head>'
+        '<body></body></html>',
+      );
+      var inFlight = 0;
+      var maxInFlight = 0;
+      final route = SeoRoute.dynamic(
+        path: '/p/[id]',
+        params: () async => [
+          for (var i = 0; i < 8; i++) SeoParams({'id': '$i'}),
+        ],
+        metadata: (_) async {
+          inFlight++;
+          if (inFlight > maxInFlight) maxInFlight = inFlight;
+          await Future<void>.delayed(Duration.zero);
+          inFlight--;
+          return const SeoMetadata(title: 't', description: 'd');
+        },
+        content: (_, b) => b.h1('x'),
+      );
+
+      final result = await SeoBuilder([
+        route,
+      ]).run(['--output', dir.path, '--concurrency', '4']);
+
+      expect(result.pageCount, 8);
+      expect(result.failures, isEmpty);
+      expect(maxInFlight, greaterThan(1)); // proves pages ran concurrently
+    });
+
     test('missing shell reports a failure and exits non-zero', () async {
       final saved = exitCode;
       try {

@@ -4,9 +4,11 @@ import 'dart:io';
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html;
 
+import 'cache.dart';
 import 'head.dart';
 import 'json_ld.dart';
 import 'locale.dart';
+import 'metadata.dart';
 import 'node.dart';
 import 'params.dart';
 import 'paths.dart';
@@ -52,7 +54,8 @@ class SeoBuilder {
   /// summary is written to stderr, so the generator fails a CI pipeline cleanly
   /// instead of crashing with a stack trace or exiting 0 with broken output.
   Future<SeoBuildResult> run(List<String> args) async {
-    final (:output, :baseHref, :baseUrl) = _parseOptions(args);
+    final (:output, :baseHref, :baseUrl, :dryRun, :verbose, :incremental) =
+        _parseOptions(args);
     final shellFile = File('$output/index.html');
     if (!shellFile.existsSync()) {
       final result = SeoBuildResult(
@@ -67,7 +70,7 @@ class SeoBuilder {
           ),
         ],
       );
-      _report(result, hasSitemap: false, exit: 2);
+      _report(result, hasSitemap: false, dryRun: dryRun, exit: 2);
       return result;
     }
     final shell = shellFile.readAsStringSync();
@@ -91,7 +94,24 @@ class SeoBuilder {
       null => null,
     };
 
+    final cacheFile = File('$output/.seo_seed_cache.json');
+    final cache = incremental
+        ? SeoBuildCache.load(
+            cacheFile,
+            contentHash(
+              jsonEncode([
+                shell,
+                effectiveBaseHref,
+                siteBase ?? '',
+                defaultLocale ?? '',
+                localeStrategy.runtimeType.toString(),
+              ]),
+            ),
+          )
+        : null;
+
     var pageCount = 0;
+    var skipped = 0;
     final failures = <SeoBuildFailure>[];
     final entries = <SitemapEntry>[];
     for (final route in routes) {
@@ -112,13 +132,28 @@ class SeoBuilder {
             null => baseParams,
           };
           try {
-            final meta = await route.metadataFor(params);
-            final node = await route.contentFor(params, const SeoHtml());
+            // Cheap path/URL work first (no metadata/content), so an unchanged
+            // page can be skipped without the expensive callbacks.
             final routePath = route.resolvePath(params);
             final pagePath = switch (locale) {
               final l? => localeStrategy.pathFor(l, routePath),
               null => routePath,
             };
+            final dir = _pageDir(output, pagePath);
+            final file = '$dir/index.html';
+
+            if (cache != null &&
+                cache.unchangedByVersion(pagePath, params.version) &&
+                File(file).existsSync()) {
+              cache.carryForward(pagePath);
+              if (cache.sitemapFor(pagePath) case final sm?) {
+                entries.add(_sitemapEntryFromJson(sm));
+              }
+              skipped++;
+              if (verbose) stdout.writeln('  skipped (unchanged) $file');
+              continue;
+            }
+
             final pageUrl = switch (siteBase) {
               final base? => switch (locale) {
                 final l? => localeStrategy.urlFor(l, routePath, base),
@@ -141,6 +176,8 @@ class SeoBuilder {
               xDefault = localeStrategy.urlFor(dflt, routePath, siteBase);
             }
 
+            final meta = await route.metadataFor(params);
+            final node = await route.contentFor(params, const SeoHtml());
             final page = injectPage(
               shell,
               head: renderHead(
@@ -157,13 +194,11 @@ class SeoBuilder {
               seed: serializeNode(node),
               baseHref: effectiveBaseHref,
             );
-            final dir = _pageDir(output, pagePath);
-            Directory(dir).createSync(recursive: true);
-            File('$dir/index.html').writeAsStringSync(page);
-            pageCount++;
+
+            SitemapEntry? entry;
             if (pageUrl case final loc? when meta.indexable) {
               final sm = meta.sitemap;
-              entries.add((
+              entry = (
                 loc: loc,
                 lastmod: sm?.lastmod,
                 changeFreq: sm?.changeFreq,
@@ -173,7 +208,31 @@ class SeoBuilder {
                     resolveUrl(image, siteBase),
                 ],
                 alternates: alternates,
-              ));
+              );
+              entries.add(entry);
+            }
+
+            final hash = contentHash(page);
+            final unchangedWrite =
+                cache != null &&
+                cache.unchangedByHash(pagePath, hash) &&
+                File(file).existsSync();
+            if (!dryRun && !unchangedWrite) {
+              Directory(dir).createSync(recursive: true);
+              File(file).writeAsStringSync(page);
+            }
+            cache?.record(
+              pagePath,
+              version: params.version,
+              hash: hash,
+              sitemap: entry == null ? null : _sitemapEntryToJson(entry),
+            );
+            pageCount++;
+            if (verbose) {
+              final action = dryRun
+                  ? 'would write'
+                  : (unchangedWrite ? 'unchanged' : 'wrote');
+              stdout.writeln('  $action $file');
             }
           } catch (e) {
             failures.add(
@@ -188,7 +247,7 @@ class SeoBuilder {
       }
     }
 
-    if (siteBase case final base?) {
+    if (siteBase case final base? when !dryRun) {
       try {
         File('$output/sitemap.xml').writeAsStringSync(renderSitemap(entries));
         File(
@@ -199,12 +258,15 @@ class SeoBuilder {
       }
     }
 
+    if (cache != null && !dryRun) cache.save(cacheFile);
+
     final result = SeoBuildResult(
       output: output,
       pageCount: pageCount,
+      skipped: skipped,
       failures: failures,
     );
-    _report(result, hasSitemap: siteBase != null, exit: 1);
+    _report(result, hasSitemap: siteBase != null, dryRun: dryRun, exit: 1);
     return result;
   }
 
@@ -213,12 +275,19 @@ class SeoBuilder {
   void _report(
     SeoBuildResult result, {
     required bool hasSitemap,
+    required bool dryRun,
     required int exit,
   }) {
     if (result.ok) {
+      final prefix = dryRun
+          ? 'seo_seed: [dry run] would generate'
+          : 'seo_seed: generated';
+      final skipped = result.skipped > 0
+          ? ' (skipped ${result.skipped} unchanged)'
+          : '';
+      final extras = hasSitemap ? ' + sitemap.xml + robots.txt' : '';
       stdout.writeln(
-        'seo_seed: generated ${result.pageCount} page(s)'
-        '${hasSitemap ? ' + sitemap.xml + robots.txt' : ''} in ${result.output}',
+        '$prefix ${result.pageCount} page(s)$skipped$extras in ${result.output}',
       );
       return;
     }
@@ -246,11 +315,16 @@ class SeoBuildResult {
   SeoBuildResult({
     required this.output,
     required this.pageCount,
+    this.skipped = 0,
     required this.failures,
   });
 
   final String output;
   final int pageCount;
+
+  /// Pages skipped because they were unchanged since the last `--incremental`
+  /// build.
+  final int skipped;
   final List<SeoBuildFailure> failures;
 
   bool get ok => failures.isEmpty;
@@ -259,6 +333,7 @@ class SeoBuildResult {
     'ok': ok,
     'output': output,
     'pages': pageCount,
+    'skipped': skipped,
     'failures': [for (final f in failures) f.toJson()],
   };
 }
@@ -366,6 +441,30 @@ void _removeSupersededTags(Element headEl, Element incoming) {
   headEl.children.where(supersedes).toList().forEach((e) => e.remove());
 }
 
+Map<String, Object?> _sitemapEntryToJson(SitemapEntry e) => {
+  'loc': e.loc,
+  'lastmod': e.lastmod?.toIso8601String(),
+  'changeFreq': e.changeFreq?.name,
+  'priority': e.priority,
+  'images': e.images,
+  'alternates': e.alternates,
+};
+
+SitemapEntry _sitemapEntryFromJson(Map<String, Object?> j) => (
+  loc: j['loc'] as String,
+  lastmod: switch (j['lastmod']) {
+    final s? => DateTime.parse(s as String),
+    null => null,
+  },
+  changeFreq: switch (j['changeFreq']) {
+    final s? => SeoChangeFreq.values.byName(s as String),
+    null => null,
+  },
+  priority: (j['priority'] as num?)?.toDouble(),
+  images: (j['images'] as List<Object?>).cast<String>(),
+  alternates: (j['alternates'] as Map<String, Object?>).cast<String, String>(),
+);
+
 /// The site base for absolute URLs: the origin plus the base-href path prefix,
 /// so a page under `/app/` lists as `https://host/app/pricing`, not `/pricing`.
 /// A root `/` base href contributes no prefix.
@@ -383,12 +482,22 @@ String _shellBaseHref(String shell) {
   return href.endsWith('/') ? href : '$href/';
 }
 
-typedef _Options = ({String output, String? baseHref, String? baseUrl});
+typedef _Options = ({
+  String output,
+  String? baseHref,
+  String? baseUrl,
+  bool dryRun,
+  bool verbose,
+  bool incremental,
+});
 
 _Options _parseOptions(List<String> args) {
   var output = 'build/web';
   String? baseHref;
   String? baseUrl;
+  var dryRun = false;
+  var verbose = false;
+  var incremental = false;
 
   for (var i = 0; i < args.length; i++) {
     String next() => (i + 1 < args.length) ? args[++i] : '';
@@ -399,10 +508,23 @@ _Options _parseOptions(List<String> args) {
         baseHref = next();
       case '--base-url':
         baseUrl = next();
+      case '--dry-run':
+        dryRun = true;
+      case '--verbose' || '-v':
+        verbose = true;
+      case '--incremental':
+        incremental = true;
     }
   }
 
   if (baseHref != null && !baseHref.endsWith('/')) baseHref = '$baseHref/';
   output = output.replaceAll(RegExp(r'/+$'), '');
-  return (output: output, baseHref: baseHref, baseUrl: baseUrl);
+  return (
+    output: output,
+    baseHref: baseHref,
+    baseUrl: baseUrl,
+    dryRun: dryRun,
+    verbose: verbose,
+    incremental: incremental,
+  );
 }

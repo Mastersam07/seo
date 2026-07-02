@@ -77,7 +77,13 @@ final List<SeoRoute> seoRoutes = [
     // Key the route on the slug so the generated URL, the canonical, and the
     // sitemap entry all agree on `/post/<slug>`.
     path: '/post/[slug]',
-    params: () async => _posts.map((p) => SeoParams({'slug': p.slug})).toList(),
+    params: () async => _posts
+        .map(
+          (p) => SeoParams({
+            'slug': p.slug,
+          }, version: p.publishedAt.toIso8601String()),
+        )
+        .toList(),
     metadata: (params) async {
       final post = _posts.firstWhere((p) => p.slug == params['slug']);
       return SeoMetadata(

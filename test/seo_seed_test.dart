@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:html/parser.dart' as html;
 import 'package:seo_seed/seo_seed.dart';
+import 'package:seo_seed/src/cache.dart';
 import 'package:seo_seed/src/serialize.dart';
 import 'package:seo_seed/src/head.dart';
 import 'package:seo_seed/src/paths.dart';
@@ -740,6 +741,43 @@ void main() {
     });
   });
 
+  group('incremental cache', () {
+    test('contentHash is stable and change-sensitive', () {
+      expect(contentHash('abc'), contentHash('abc'));
+      expect(contentHash('abc'), isNot(contentHash('abd')));
+    });
+
+    test('round-trips version, hash and sitemap entry', () {
+      final dir = Directory.systemTemp.createTempSync('seo_cache');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/c.json');
+
+      SeoBuildCache.load(file, 'key1')
+        ..record('/p', version: 'v1', hash: 'h1', sitemap: {'loc': 'x'})
+        ..save(file);
+
+      final reloaded = SeoBuildCache.load(file, 'key1');
+      expect(reloaded.unchangedByVersion('/p', 'v1'), isTrue);
+      expect(reloaded.unchangedByVersion('/p', 'v2'), isFalse);
+      expect(reloaded.unchangedByHash('/p', 'h1'), isTrue);
+      expect(reloaded.sitemapFor('/p'), {'loc': 'x'});
+    });
+
+    test('a changed buildKey discards the previous manifest', () {
+      final dir = Directory.systemTemp.createTempSync('seo_cache');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/c.json');
+      SeoBuildCache.load(file, 'key1')
+        ..record('/p', version: 'v1', hash: 'h1')
+        ..save(file);
+
+      expect(
+        SeoBuildCache.load(file, 'key2').unchangedByVersion('/p', 'v1'),
+        isFalse,
+      );
+    });
+  });
+
   group('SeoBuilder.run', () {
     SeoRoute pricing() => SeoRoute.static(
       path: '/pricing',
@@ -1012,6 +1050,45 @@ void main() {
           'href="https://example.com/fr/pricing"/>',
         ),
       );
+    });
+
+    test('incremental skips unchanged pages but keeps the sitemap', () async {
+      final dir = tempWithShell(
+        '<!DOCTYPE html><html><head><base href="/"></head>'
+        '<body></body></html>',
+      );
+      SeoRoute post(String version) => SeoRoute.dynamic(
+        path: '/post/[slug]',
+        params: () async => [
+          SeoParams(const {'slug': 'hi'}, version: version),
+        ],
+        metadata: (_) => const SeoMetadata(title: 'Hi', description: 'd'),
+        content: (_, b) => b.h1('hi'),
+      );
+      final args = [
+        '--output',
+        dir.path,
+        '--base-url',
+        'https://x.dev',
+        '--incremental',
+      ];
+
+      final first = await SeoBuilder([post('v1')]).run(args);
+      expect(first.pageCount, 1);
+      expect(first.skipped, 0);
+
+      final second = await SeoBuilder([post('v1')]).run(args);
+      expect(second.pageCount, 0);
+      expect(second.skipped, 1);
+      // The skipped page still appears in the sitemap (replayed from cache).
+      expect(
+        File('${dir.path}/sitemap.xml').readAsStringSync(),
+        contains('https://x.dev/post/hi'),
+      );
+
+      final third = await SeoBuilder([post('v2')]).run(args);
+      expect(third.pageCount, 1);
+      expect(third.skipped, 0);
     });
 
     test('missing shell reports a failure and exits non-zero', () async {

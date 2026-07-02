@@ -7,7 +7,7 @@
 /// For a localized route, the builder also sets [locale] on the params passed
 /// to `metadata`/`content`, so callbacks can translate per locale.
 class SeoParams {
-  const SeoParams(this.values, {this.locale});
+  const SeoParams(this.values, {this.locale, this.version});
 
   final Map<String, String> values;
 
@@ -15,10 +15,17 @@ class SeoParams {
   /// a non-localized route.
   final String? locale;
 
+  /// An optional cheap change key for this page, e.g. `post.updatedAt`. With
+  /// `--incremental`, the builder skips regenerating a page whose [version]
+  /// matches the last build's — without calling `metadata`/`content` — so a
+  /// large catalog only re-renders what actually changed.
+  final String? version;
+
   static const SeoParams empty = SeoParams({});
 
   /// A copy of these params tagged with [locale].
-  SeoParams withLocale(String locale) => SeoParams(values, locale: locale);
+  SeoParams withLocale(String locale) =>
+      SeoParams(values, locale: locale, version: version);
 
   /// Returns the value for [key], or throws a [StateError] naming the missing
   /// key. Missing params are almost always a mismatch between the route path

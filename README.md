@@ -158,13 +158,17 @@ This writes one `index.html` per page (`/post/abc` →
 the app bundle, injects the head, prepends the crawler seed block, and — when
 `--base-url` is given — writes `sitemap.xml` and `robots.txt`.
 
-Options:
+That's the whole flow. The common options:
 
 | Flag | Meaning |
 | --- | --- |
 | `--output` (`-o`) | build output directory (default `build/web`) |
 | `--base-url` | site origin, e.g. `https://sortd.app`; enables absolute URLs, sitemap, robots.txt |
 | `--base-href` | override the shell's `<base href>` (see below) |
+
+There are also `--dry-run` (preview without writing), `--verbose` (log each
+page), and `--incremental` (for large sites — see [Scaling large
+sites](#scaling-large-sites-optional)), but you don't need any of them to start.
 
 ## 3. Take over on the client
 
@@ -337,6 +341,31 @@ representation to keep in sync.
   customizable for this.
 - Keep the hero's largest element (usually the `h1`) meaningful, so LCP measures
   something real rather than a placeholder.
+
+## Scaling large sites (optional)
+
+**Most projects can ignore this.** A full rebuild of a landing page, pricing,
+docs, and a few hundred blog posts takes seconds — just run the generator every
+deploy. This section is only for large, data-driven catalogs (thousands of
+pages) where re-running `metadata`/`content` per page — typically an API call
+each — makes full rebuilds slow.
+
+For that case, `--incremental` skips pages that haven't changed. Attach a cheap
+change key to each page via `SeoParams.version` — anything that changes when the
+page's content does, like the record's `updatedAt`:
+
+```dart
+params: () async => (await api.allPosts())
+    .map((p) => SeoParams({'slug': p.slug}, version: p.updatedAt.toIso8601String()))
+    .toList(),
+```
+
+On the next `--incremental` run, a page whose `version` matches the last build
+is skipped **without** calling `metadata`/`content`, so only what actually
+changed is re-rendered. A manifest (`.seo_seed_cache.json`) is kept in the
+output dir; a fresh `flutter build web` (new shell) or a config change
+invalidates it and regenerates everything. Without a `version`, `--incremental`
+still avoids rewriting unchanged files but can't skip the compute.
 
 ## Build output & CI
 

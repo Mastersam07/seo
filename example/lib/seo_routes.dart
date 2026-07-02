@@ -37,6 +37,14 @@ final List<SeoRoute> seoRoutes = [
       description: 'Split bills, settle up, done. See Sortd pricing.',
       canonical: '/pricing',
       openGraph: const OpenGraph(image: '/og/pricing.png'),
+      // Styles the seed so it paints as a hero before the engine boots; both
+      // the seed and this style are removed on takeover.
+      criticalCss:
+          '#seo-seed{max-width:640px;margin:0 auto;padding:24px;'
+          'font:16px/1.5 system-ui,sans-serif}'
+          '#seo-seed h1{font-size:28px;margin:0 0 12px}'
+          '#seo-seed table{width:100%;border-collapse:collapse}'
+          '#seo-seed th,#seo-seed td{border:1px solid #ddd;padding:8px;text-align:left}',
       jsonLd: [
         SeoJsonLd.faq(const [
           (

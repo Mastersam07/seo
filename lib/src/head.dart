@@ -39,6 +39,10 @@ String renderHead(
     '<meta name="description" content="${escapeAttr(m.description)}">',
   );
 
+  if (m.criticalCss case final css?) {
+    out.writeln('<style id="seo-seed-style">$css</style>');
+  }
+
   final canonical = switch (m.canonical) {
     final c? => absolute(canonicalizeUrl(c)),
     null => selfCanonical,

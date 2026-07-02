@@ -1,8 +1,10 @@
 import 'package:web/web.dart' as web;
 
-/// Web implementation: remove the crawler seed block once the app has taken
-/// over, so users never see the seeded text under the canvas.
+/// Web implementation: remove the crawler seed block and its inlined critical
+/// CSS once the app has taken over, so neither the seeded text nor its styles
+/// linger under the canvas.
 void takeoverImpl() {
-  final el = web.document.getElementById('seo-seed');
-  el?.remove();
+  for (final id in const ['seo-seed', 'seo-seed-style']) {
+    web.document.getElementById(id)?.remove();
+  }
 }

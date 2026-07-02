@@ -82,6 +82,7 @@ class SeoMetadata {
     this.robots,
     this.extraMeta = const {},
     this.sitemap,
+    this.criticalCss,
   });
 
   final String title;
@@ -112,6 +113,14 @@ class SeoMetadata {
   /// Optional sitemap hints (`lastmod`, `changefreq`, `priority`, images) for
   /// this page's entry. Ignored for non-indexable pages, which are omitted.
   final SeoSitemap? sitemap;
+
+  /// Optional CSS inlined in `<head>` (as `<style id="seo-seed-style">`) to
+  /// style the crawler seed block so it paints as a styled above-the-fold hero
+  /// before the Flutter engine boots — the largest Core Web Vitals lever for a
+  /// canvas app. Target `#seo-seed` and its children. Both the seed and this
+  /// style are removed by `SeoRuntime.takeover()`, so the rules never leak into
+  /// the running app. Emitted verbatim, so pass only CSS you control.
+  final String? criticalCss;
 
   /// Whether this page should be advertised in the sitemap: false when [robots]
   /// opts out of indexing (`noindex`, or the `none` directive). The page is

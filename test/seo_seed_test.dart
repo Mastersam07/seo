@@ -222,6 +222,27 @@ void main() {
       expect(head, contains('property="og:image" content="/og.png"'));
     });
 
+    test('inlines critical CSS as a marked style block, or omits it', () {
+      final withCss = renderHead(
+        const SeoMetadata(
+          title: 't',
+          description: 'd',
+          criticalCss: '#seo-seed{font:16px sans-serif}',
+        ),
+      );
+      expect(
+        withCss,
+        contains(
+          '<style id="seo-seed-style">#seo-seed{font:16px sans-serif}</style>',
+        ),
+      );
+
+      final withoutCss = renderHead(
+        const SeoMetadata(title: 't', description: 'd'),
+      );
+      expect(withoutCss, isNot(contains('seo-seed-style')));
+    });
+
     test('json-ld closing tags are neutralized', () {
       final head = renderHead(
         SeoMetadata(

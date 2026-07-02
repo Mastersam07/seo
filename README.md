@@ -301,6 +301,43 @@ How a locale maps to a URL is pluggable via `SeoLocaleStrategy`:
 SeoBuilder(seoRoutes, localeStrategy: const SubdomainLocales(domain: 'example.com'));
 ```
 
+## Performance (Core Web Vitals)
+
+A canvas app starts at a disadvantage: nothing meaningful paints until the
+Flutter engine boots. Crawlable content is necessary but not sufficient —
+ranking is also a speed function.
+
+**Paint a styled hero before the engine boots.** The seed block is already the
+first thing in `<body>` and visible, so it paints immediately — it just looks
+unstyled. Give it critical CSS and it becomes a real, LCP-eligible hero. Target
+`#seo-seed`; the seed *and* the style are removed on `takeover()`, so nothing
+leaks into the running app:
+
+```dart
+SeoMetadata(
+  title: 'Pricing — Sortd',
+  description: 'Split bills, settle up, done.',
+  criticalCss:
+      '#seo-seed{max-width:640px;margin:0 auto;padding:24px;'
+      'font:16px/1.5 system-ui,sans-serif}'
+      '#seo-seed h1{font-size:28px}',
+);
+```
+
+Keep it small and inline — the point is a fast first paint with no extra
+round-trip. Because the hero *is* your crawler content, there's no second
+representation to keep in sync.
+
+**Then shrink the gap to interactivity:**
+
+- Build with `flutter build web --wasm` where your plugins allow it — the
+  skwasm renderer starts faster and is lighter than CanvasKit.
+- Consider deferring engine load (e.g. boot on first interaction or after first
+  paint) so the hero owns the early timeline; `flutter_bootstrap.js` is
+  customizable for this.
+- Keep the hero's largest element (usually the `h1`) meaningful, so LCP measures
+  something real rather than a placeholder.
+
 ## Build output & CI
 
 `run()` never crashes on a bad route: it catches each failure, attributes it to

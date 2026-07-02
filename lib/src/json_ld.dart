@@ -62,6 +62,32 @@ class SeoJsonLd {
     });
   }
 
+  /// schema.org `BreadcrumbList` derived from a route [path], one item per
+  /// cumulative path segment (plus a [home] root). Segment names default to a
+  /// humanized form of the segment (`splitting-rent` -> `Splitting Rent`) and
+  /// can be overridden per segment via [names]. When [base] is given item URLs
+  /// are absolute; otherwise they are root-relative.
+  factory SeoJsonLd.breadcrumbTrail({
+    required String path,
+    String? base,
+    String home = 'Home',
+    Map<String, String> names = const {},
+  }) {
+    final items = <({String name, String url})>[(name: home, url: base ?? '/')];
+    var url = base ?? '';
+    for (final segment in path.split('/').where((s) => s.isNotEmpty)) {
+      url = '$url/$segment';
+      items.add((name: names[segment] ?? _humanize(segment), url: url));
+    }
+    return SeoJsonLd.breadcrumb(items);
+  }
+
+  static String _humanize(String segment) => segment
+      .split(RegExp(r'[-_]'))
+      .where((word) => word.isNotEmpty)
+      .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
+      .join(' ');
+
   /// schema.org `Organization`, typically emitted on a landing page.
   /// [sameAs] lists social/profile URLs that represent the same entity.
   factory SeoJsonLd.organization({

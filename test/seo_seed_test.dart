@@ -159,7 +159,9 @@ void main() {
         SeoMetadata(
           title: 't',
           description: 'd',
-          jsonLd: SeoJsonLd.raw({'x': '</script>'}),
+          jsonLd: [
+            SeoJsonLd.raw({'x': '</script>'}),
+          ],
         ),
       );
       // Only our own closing tag survives; the payload's `<` is \u-escaped.
@@ -222,6 +224,53 @@ void main() {
         (q['acceptedAnswer'] as Map<String, dynamic>)['text'],
         'Yes for personal use.',
       );
+    });
+
+    test('breadcrumbTrail builds absolute items from a path', () {
+      final d = SeoJsonLd.breadcrumbTrail(
+        path: '/post/splitting-rent-fairly',
+        base: 'https://x.dev',
+      ).data;
+      expect(d['@type'], 'BreadcrumbList');
+      final items = (d['itemListElement'] as List<dynamic>)
+          .cast<Map<String, dynamic>>();
+      expect(items.map((i) => i['name']), [
+        'Home',
+        'Post',
+        'Splitting Rent Fairly',
+      ]);
+      expect(items.map((i) => i['item']), [
+        'https://x.dev',
+        'https://x.dev/post',
+        'https://x.dev/post/splitting-rent-fairly',
+      ]);
+    });
+
+    test('breadcrumbTrail honors name overrides and is relative sans base', () {
+      final d = SeoJsonLd.breadcrumbTrail(
+        path: '/post/x',
+        names: const {'post': 'Blog'},
+      ).data;
+      final items = (d['itemListElement'] as List<dynamic>)
+          .cast<Map<String, dynamic>>();
+      expect(items[1]['name'], 'Blog');
+      expect(items[1]['item'], '/post');
+    });
+
+    test('renderHead emits one script per block', () {
+      final head = renderHead(
+        SeoMetadata(
+          title: 't',
+          description: 'd',
+          jsonLd: [
+            SeoJsonLd.article(headline: 'h'),
+            SeoJsonLd.faq(const [(question: 'q', answer: 'a')]),
+          ],
+        ),
+      );
+      expect('application/ld+json'.allMatches(head).length, 2);
+      expect(head, contains('"@type":"Article"'));
+      expect(head, contains('"@type":"FAQPage"'));
     });
 
     test('every factory declares the schema.org context and a type', () {
@@ -353,7 +402,9 @@ void main() {
           SeoMetadata(
             title: 't',
             description: 'd',
-            jsonLd: SeoJsonLd.raw({'x': payload}),
+            jsonLd: [
+              SeoJsonLd.raw({'x': payload}),
+            ],
           ),
         );
         // Re-parse as a browser would; the sentinel body must survive whole.
@@ -734,6 +785,38 @@ void main() {
         contains('<image:loc>https://example.com/og/pricing.png</image:loc>'),
       );
     });
+
+    test(
+      'breadcrumbs:true appends a BreadcrumbList from the route path',
+      () async {
+        final dir = tempWithShell(
+          '<!DOCTYPE html><html><head><base href="/"></head>'
+          '<body></body></html>',
+        );
+        final route = SeoRoute.dynamic(
+          path: '/post/[slug]',
+          params: () async => [
+            const SeoParams({'slug': 'hi-there'}),
+          ],
+          metadata: (_) => const SeoMetadata(
+            title: 't',
+            description: 'd',
+            breadcrumbs: true,
+          ),
+          content: (_, b) => b.h1('x'),
+        );
+        await SeoBuilder([
+          route,
+        ]).run(['--output', dir.path, '--base-url', 'https://example.com']);
+
+        final page = File(
+          '${dir.path}/post/hi-there/index.html',
+        ).readAsStringSync();
+        expect(page, contains('BreadcrumbList'));
+        expect(page, contains('https://example.com/post/hi-there'));
+        expect(page, contains('Hi There')); // humanized leaf segment
+      },
+    );
 
     test('missing shell reports a failure and exits non-zero', () async {
       final saved = exitCode;

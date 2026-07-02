@@ -37,16 +37,18 @@ final List<SeoRoute> seoRoutes = [
       description: 'Split bills, settle up, done. See Sortd pricing.',
       canonical: '/pricing',
       openGraph: const OpenGraph(image: '/og/pricing.png'),
-      jsonLd: SeoJsonLd.faq(const [
-        (
-          question: 'Is Sortd free?',
-          answer: 'Yes, Sortd is free for personal groups.',
-        ),
-        (
-          question: 'What do paid plans add?',
-          answer: 'Receipt scanning and multi-currency support.',
-        ),
-      ]),
+      jsonLd: [
+        SeoJsonLd.faq(const [
+          (
+            question: 'Is Sortd free?',
+            answer: 'Yes, Sortd is free for personal groups.',
+          ),
+          (
+            question: 'What do paid plans add?',
+            answer: 'Receipt scanning and multi-currency support.',
+          ),
+        ]),
+      ],
     ),
     content: (b) => b.article([
       b.h1('Simple pricing'),
@@ -67,11 +69,14 @@ final List<SeoRoute> seoRoutes = [
         title: '${post.title} - Sortd',
         description: post.excerpt,
         canonical: '/post/${post.slug}',
-        jsonLd: SeoJsonLd.article(
-          headline: post.title,
-          description: post.excerpt,
-          datePublished: post.publishedAt,
-        ),
+        jsonLd: [
+          SeoJsonLd.article(
+            headline: post.title,
+            description: post.excerpt,
+            datePublished: post.publishedAt,
+          ),
+        ],
+        breadcrumbs: true,
         sitemap: SeoSitemap(
           lastmod: post.publishedAt,
           changeFreq: SeoChangeFreq.monthly,

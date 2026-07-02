@@ -5,6 +5,7 @@ import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html;
 
 import 'head.dart';
+import 'json_ld.dart';
 import 'node.dart';
 import 'params.dart';
 import 'paths.dart';
@@ -92,13 +93,20 @@ class SeoBuilder {
         try {
           final meta = await route.metadataFor(params);
           final node = await route.contentFor(params, const SeoHtml());
+          final path = route.resolvePath(params);
           final page = injectPage(
             shell,
-            head: renderHead(meta, siteBase: siteBase),
+            head: renderHead(
+              meta,
+              siteBase: siteBase,
+              extraJsonLd: [
+                if (meta.breadcrumbs)
+                  SeoJsonLd.breadcrumbTrail(path: path, base: siteBase),
+              ],
+            ),
             seed: serializeNode(node),
             baseHref: effectiveBaseHref,
           );
-          final path = route.resolvePath(params);
           final dir = _pageDir(output, path);
           Directory(dir).createSync(recursive: true);
           File('$dir/index.html').writeAsStringSync(page);

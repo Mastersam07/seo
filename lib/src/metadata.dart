@@ -77,7 +77,8 @@ class SeoMetadata {
     this.canonical,
     this.openGraph,
     this.twitter,
-    this.jsonLd,
+    this.jsonLd = const [],
+    this.breadcrumbs = false,
     this.robots,
     this.extraMeta = const {},
     this.sitemap,
@@ -91,7 +92,16 @@ class SeoMetadata {
 
   final OpenGraph? openGraph;
   final TwitterCard? twitter;
-  final SeoJsonLd? jsonLd;
+
+  /// Structured-data blocks for this page; each is emitted as its own
+  /// `<script type="application/ld+json">`. A page may declare several
+  /// (e.g. an `Article` plus a `BreadcrumbList`).
+  final List<SeoJsonLd> jsonLd;
+
+  /// When true, the builder appends a `BreadcrumbList` derived from this page's
+  /// route path (see [SeoJsonLd.breadcrumbTrail]), with absolute URLs when a
+  /// site base is configured.
+  final bool breadcrumbs;
 
   /// e.g. `noindex, follow`. Omitted when null.
   final String? robots;

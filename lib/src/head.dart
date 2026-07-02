@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'json_ld.dart';
 import 'metadata.dart';
 import 'paths.dart';
 import 'serialize.dart';
@@ -12,7 +13,14 @@ import 'serialize.dart';
 /// When [siteBase] is given (origin plus any base-href prefix), relative
 /// canonical, `og:url`, and image URLs are resolved to absolute — the form
 /// search engines and social scrapers prefer. Without it they stay relative.
-String renderHead(SeoMetadata m, {String? siteBase}) {
+///
+/// [extraJsonLd] blocks are emitted after the metadata's own — the builder uses
+/// this to append an auto-generated breadcrumb.
+String renderHead(
+  SeoMetadata m, {
+  String? siteBase,
+  Iterable<SeoJsonLd> extraJsonLd = const [],
+}) {
   final out = StringBuffer();
 
   String? absolute(String? url) =>
@@ -72,7 +80,7 @@ String renderHead(SeoMetadata m, {String? siteBase}) {
     );
   }
 
-  if (m.jsonLd case final jsonLd?) {
+  for (final jsonLd in [...m.jsonLd, ...extraJsonLd]) {
     // The JSON lives in a raw-text <script> element, so package:html never
     // sanitizes it — this escaping is the only guard. Encoding every `<` and
     // `>` as its JSON `\uXXXX` form neutralizes `</script>`, `<!--`, and

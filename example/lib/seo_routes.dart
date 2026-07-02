@@ -4,15 +4,7 @@ import 'package:seo_seed/seo_seed.dart';
 // API client and models your Flutter widgets already use, which is what keeps
 // the crawler content and the app content in sync at the data level.
 class _Post {
-  const _Post(
-    this.id,
-    this.slug,
-    this.title,
-    this.excerpt,
-    this.body,
-    this.publishedAt,
-  );
-  final String id;
+  const _Post(this.slug, this.title, this.excerpt, this.body, this.publishedAt);
   final String slug;
   final String title;
   final String excerpt;
@@ -24,7 +16,6 @@ class _Post {
 // `const`. In a real app the date comes from your model (post.publishedAt).
 final _posts = <_Post>[
   _Post(
-    'abc123',
     'splitting-rent-fairly',
     'Splitting rent fairly',
     'How to divide rent when rooms and incomes differ.',
@@ -56,10 +47,12 @@ final List<SeoRoute> seoRoutes = [
     ]),
   ),
   SeoRoute.dynamic(
-    path: '/post/[id]',
-    params: () async => _posts.map((p) => SeoParams({'id': p.id})).toList(),
+    // Key the route on the slug so the generated URL, the canonical, and the
+    // sitemap entry all agree on `/post/<slug>`.
+    path: '/post/[slug]',
+    params: () async => _posts.map((p) => SeoParams({'slug': p.slug})).toList(),
     metadata: (params) async {
-      final post = _posts.firstWhere((p) => p.id == params['id']);
+      final post = _posts.firstWhere((p) => p.slug == params['slug']);
       return SeoMetadata(
         title: '${post.title} - Sortd',
         description: post.excerpt,
@@ -72,7 +65,7 @@ final List<SeoRoute> seoRoutes = [
       );
     },
     content: (params, b) async {
-      final post = _posts.firstWhere((p) => p.id == params['id']);
+      final post = _posts.firstWhere((p) => p.slug == params['slug']);
       return b.article([
         b.h1(post.title),
         for (final para in post.body) b.p(para),

@@ -80,13 +80,23 @@ class SeoRoute {
   /// Substitutes bracketed segments in [path] with values from [p], e.g.
   /// `/post/[id]` with `{id: abc}` becomes `/post/abc`, in the package's
   /// canonical no-trailing-slash form (see [canonicalizeUrl]).
+  ///
+  /// Throws a [StateError] naming this route and the missing segment if [p]
+  /// has no value for a `[segment]` in [path], so a mismatch between the path
+  /// and what `params()` returned fails loudly at build time.
   String resolvePath(SeoParams p) {
     final substituted = path.replaceAllMapped(_segment, (m) {
       return switch (m.group(1)) {
-        final key? => p[key],
+        final key? => p.maybe(key) ?? _missingParam(key, p),
         null => m.group(0) ?? '',
       };
     });
     return canonicalizeUrl(substituted);
   }
+
+  Never _missingParam(String key, SeoParams p) => throw StateError(
+    "seo_seed: route '$path' has a '[$key]' segment but params() returned no "
+    "'$key' value (keys: ${p.values.keys.join(', ')}). Every dynamic segment "
+    'needs a matching key.',
+  );
 }

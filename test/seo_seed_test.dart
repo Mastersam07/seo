@@ -94,6 +94,25 @@ void main() {
       );
       expect(route.resolvePath(SeoParams.empty), '/pricing');
     });
+
+    test('fails loudly naming the route and the missing segment', () {
+      final route = SeoRoute.dynamic(
+        path: '/post/[id]',
+        params: () async => const [],
+        metadata: (_) => const SeoMetadata(title: 't', description: 'd'),
+        content: (_, b) => b.p('x'),
+      );
+      expect(
+        () => route.resolvePath(const SeoParams({'slug': 'x'})),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('/post/[id]'), contains("'id'")),
+          ),
+        ),
+      );
+    });
   });
 
   group('resolveParams', () {
@@ -399,6 +418,58 @@ void main() {
 
       final sitemap = File('${dir.path}/sitemap.xml').readAsStringSync();
       expect(sitemap, contains('<loc>https://example.com/pricing</loc>'));
+    });
+
+    test('collects a failing route but keeps generating the others', () async {
+      final saved = exitCode;
+      try {
+        final dir = tempWithShell(
+          '<!DOCTYPE html><html><head></head><body></body></html>',
+        );
+        final bad = SeoRoute.dynamic(
+          path: '/post/[id]',
+          params: () async => [
+            const SeoParams({'wrong': 'x'}),
+          ],
+          metadata: (_) => const SeoMetadata(title: 't', description: 'd'),
+          content: (_, b) => b.p('x'),
+        );
+
+        final result = await SeoBuilder([
+          pricing(),
+          bad,
+        ]).run(['--output', dir.path]);
+
+        expect(result.ok, isFalse);
+        expect(result.pageCount, 1); // the good route still generated
+        expect(result.failures, hasLength(1));
+        expect(result.failures.single.route, '/post/[id]');
+        expect(result.failures.single.params, {'wrong': 'x'});
+        expect(result.failures.single.message, contains("'id'"));
+        expect(result.toJson()['ok'], isFalse);
+        expect(exitCode, isNot(0));
+        expect(File('${dir.path}/pricing/index.html').existsSync(), isTrue);
+      } finally {
+        exitCode = saved;
+      }
+    });
+
+    test('missing shell reports a failure and exits non-zero', () async {
+      final saved = exitCode;
+      try {
+        final dir = Directory.systemTemp.createTempSync('seo_seed_test');
+        addTearDown(() => dir.deleteSync(recursive: true));
+
+        final result = await SeoBuilder([
+          pricing(),
+        ]).run(['--output', dir.path]);
+
+        expect(result.ok, isFalse);
+        expect(result.failures.single.route, '(shell)');
+        expect(exitCode, 2);
+      } finally {
+        exitCode = saved;
+      }
     });
   });
 }

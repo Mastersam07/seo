@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:html/dom.dart';
@@ -5,6 +6,7 @@ import 'package:html/parser.dart' as html;
 
 import 'head.dart';
 import 'node.dart';
+import 'params.dart';
 import 'route.dart';
 import 'serialize.dart';
 import 'sitemap.dart';
@@ -26,16 +28,31 @@ class SeoBuilder {
 
   final List<SeoRoute> routes;
 
-  Future<void> run(List<String> args) async {
+  /// Generates every page, writes the sitemap, and reports the outcome.
+  ///
+  /// Failures do not abort the run or throw: each is caught, attributed to its
+  /// route, and collected in the returned [SeoBuildResult]. On any failure the
+  /// process exit code is set to a non-zero value and a machine-readable JSON
+  /// summary is written to stderr, so the generator fails a CI pipeline cleanly
+  /// instead of crashing with a stack trace or exiting 0 with broken output.
+  Future<SeoBuildResult> run(List<String> args) async {
     final (:output, :baseHref, :baseUrl) = _parseOptions(args);
     final shellFile = File('$output/index.html');
     if (!shellFile.existsSync()) {
-      stderr.writeln(
-        'seo_seed: shell not found at ${shellFile.path}. '
-        'Run `flutter build web` first, or pass --output.',
+      final result = SeoBuildResult(
+        output: output,
+        pageCount: 0,
+        failures: [
+          SeoBuildFailure(
+            route: '(shell)',
+            message:
+                'shell not found at ${shellFile.path}. '
+                'Run `flutter build web` first, or pass --output.',
+          ),
+        ],
       );
-      exitCode = 2;
-      return;
+      _report(result, hasSitemap: false, exit: 2);
+      return result;
     }
     final shell = shellFile.readAsStringSync();
 
@@ -54,37 +71,81 @@ class SeoBuilder {
     }
 
     var pageCount = 0;
+    final failures = <SeoBuildFailure>[];
     for (final route in routes) {
-      for (final params in await route.resolveParams()) {
-        final meta = await route.metadataFor(params);
-        final node = await route.contentFor(params, const SeoHtml());
-
-        final page = injectPage(
-          shell,
-          head: renderHead(meta),
-          seed: serializeNode(node),
-          baseHref: effectiveBaseHref,
-        );
-
-        final dir = _pageDir(output, route.resolvePath(params));
-        Directory(dir).createSync(recursive: true);
-        File('$dir/index.html').writeAsStringSync(page);
-        pageCount++;
+      final List<SeoParams> paramSets;
+      try {
+        paramSets = await route.resolveParams();
+      } catch (e) {
+        failures.add(SeoBuildFailure(route: route.path, message: '$e'));
+        continue;
+      }
+      for (final params in paramSets) {
+        try {
+          final meta = await route.metadataFor(params);
+          final node = await route.contentFor(params, const SeoHtml());
+          final page = injectPage(
+            shell,
+            head: renderHead(meta),
+            seed: serializeNode(node),
+            baseHref: effectiveBaseHref,
+          );
+          final dir = _pageDir(output, route.resolvePath(params));
+          Directory(dir).createSync(recursive: true);
+          File('$dir/index.html').writeAsStringSync(page);
+          pageCount++;
+        } catch (e) {
+          failures.add(
+            SeoBuildFailure(
+              route: route.path,
+              params: params.values,
+              message: '$e',
+            ),
+          );
+        }
       }
     }
 
     if (baseUrl case final url?) {
-      final sitemap = await renderSitemap(
-        routes,
-        _siteBase(url, effectiveBaseHref),
-      );
-      File('$output/sitemap.xml').writeAsStringSync(sitemap);
+      try {
+        final sitemap = await renderSitemap(
+          routes,
+          _siteBase(url, effectiveBaseHref),
+        );
+        File('$output/sitemap.xml').writeAsStringSync(sitemap);
+      } catch (e) {
+        failures.add(SeoBuildFailure(route: '(sitemap)', message: '$e'));
+      }
     }
 
-    stdout.writeln(
-      'seo_seed: generated $pageCount page(s)'
-      '${baseUrl != null ? ' + sitemap.xml' : ''} in $output',
+    final result = SeoBuildResult(
+      output: output,
+      pageCount: pageCount,
+      failures: failures,
     );
+    _report(result, hasSitemap: baseUrl != null, exit: 1);
+    return result;
+  }
+
+  /// Prints a success line, or a machine-readable failure summary plus a
+  /// non-zero [exit] code when [result] has failures.
+  void _report(
+    SeoBuildResult result, {
+    required bool hasSitemap,
+    required int exit,
+  }) {
+    if (result.ok) {
+      stdout.writeln(
+        'seo_seed: generated ${result.pageCount} page(s)'
+        '${hasSitemap ? ' + sitemap.xml' : ''} in ${result.output}',
+      );
+      return;
+    }
+    stderr.writeln(
+      'seo_seed: build failed with ${result.failures.length} error(s):',
+    );
+    stderr.writeln(const JsonEncoder.withIndent('  ').convert(result.toJson()));
+    exitCode = exit;
   }
 
   /// Maps a route path to the output directory. `/` -> output root (which
@@ -95,6 +156,45 @@ class SeoBuilder {
     if (trimmed.isEmpty) return output;
     return '$output/$trimmed';
   }
+}
+
+/// The outcome of a [SeoBuilder.run]: how many pages were written and which
+/// routes failed. [ok] is true when nothing failed. [toJson] gives the
+/// machine-readable summary the CLI prints to stderr on failure.
+class SeoBuildResult {
+  SeoBuildResult({
+    required this.output,
+    required this.pageCount,
+    required this.failures,
+  });
+
+  final String output;
+  final int pageCount;
+  final List<SeoBuildFailure> failures;
+
+  bool get ok => failures.isEmpty;
+
+  Map<String, Object?> toJson() => {
+    'ok': ok,
+    'output': output,
+    'pages': pageCount,
+    'failures': [for (final f in failures) f.toJson()],
+  };
+}
+
+/// One failed route (and the params it was building, if any) with its error.
+class SeoBuildFailure {
+  SeoBuildFailure({required this.route, this.params, required this.message});
+
+  final String route;
+  final Map<String, String>? params;
+  final String message;
+
+  Map<String, Object?> toJson() => {
+    'route': route,
+    'params': ?params,
+    'message': message,
+  };
 }
 
 /// Injects [head] and [seed] into the Flutter web [shell], returning the

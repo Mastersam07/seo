@@ -60,16 +60,22 @@ String renderHead(SeoMetadata m) {
   }
 
   for (final MapEntry(:key, :value) in m.extraMeta.entries) {
-    out.writeln('<meta name="$key" content="${escapeAttr(value)}">');
+    out.writeln(
+      '<meta name="${escapeAttr(key)}" content="${escapeAttr(value)}">',
+    );
   }
 
   if (m.jsonLd case final jsonLd?) {
-    // JSON is embedded in a script element. The one sequence that can break
-    // out of a script context is `</`, so we escape the slash in any closing
-    // tag that appears inside string data.
+    // The JSON lives in a raw-text <script> element, so package:html never
+    // sanitizes it — this escaping is the only guard. Encoding every `<` and
+    // `>` as its JSON `\uXXXX` form neutralizes `</script>`, `<!--`, and
+    // `<script>` (all of which can end or mis-nest the script context) while
+    // still parsing back to the original characters. `<` only appears inside
+    // JSON string data, so the escape is always valid.
     final encoded = const JsonEncoder()
         .convert(jsonLd.data)
-        .replaceAll('</', '<\\/');
+        .replaceAll('<', r'\u003c')
+        .replaceAll('>', r'\u003e');
     out.writeln('<script type="application/ld+json">$encoded</script>');
   }
 

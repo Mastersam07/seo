@@ -25,5 +25,5 @@ String serializeNode(SeoNode node) => switch (node) {
 };
 
 String _attrs(Map<String, String> attributes) => attributes.entries
-    .map((kv) => ' ${kv.key}="${escapeAttr(kv.value)}"')
+    .map((kv) => ' ${escapeAttr(kv.key)}="${escapeAttr(kv.value)}"')
     .join();

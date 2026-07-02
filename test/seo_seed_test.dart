@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:html/parser.dart' as html;
 import 'package:seo_seed/seo_seed.dart';
 import 'package:seo_seed/src/serialize.dart';
 import 'package:seo_seed/src/head.dart';
@@ -141,8 +142,9 @@ void main() {
           jsonLd: SeoJsonLd.raw({'x': '</script>'}),
         ),
       );
-      expect(head, isNot(contains('</script></script>')));
-      expect(head, contains(r'<\/script>'));
+      // Only our own closing tag survives; the payload's `<` is \u-escaped.
+      expect('</script>'.allMatches(head).length, 1);
+      expect(head, contains('u003c'));
     });
   });
 
@@ -220,6 +222,93 @@ void main() {
       );
       expect(out, contains('<title>t</title>'));
       expect(out, contains('<div id="seo-seed"><h1>Hi</h1></div>'));
+    });
+  });
+
+  group('escaping (hostile input)', () {
+    test('escapeHtml neutralizes tag injection and keeps unicode', () {
+      expect(
+        escapeHtml('<script>alert(1)</script>'),
+        '&lt;script&gt;alert(1)&lt;/script&gt;',
+      );
+      expect(escapeHtml('a & <b>'), 'a &amp; &lt;b&gt;');
+      expect(escapeHtml('café ☕ 日本 𝕏'), 'café ☕ 日本 𝕏');
+    });
+
+    test('escapeAttr neutralizes quote breakout', () {
+      expect(escapeAttr('" onmouseover="x'), '&quot; onmouseover=&quot;x');
+      expect(escapeAttr("' onload='x"), '&#39; onload=&#39;x');
+    });
+
+    test('hostile content through the builder is inert', () {
+      expect(
+        serializeNode(b.p('</p><script>alert(1)</script>')),
+        '<p>&lt;/p&gt;&lt;script&gt;alert(1)&lt;/script&gt;</p>',
+      );
+      expect(
+        serializeNode(b.a('/x" onclick="evil()', 'go')),
+        '<a href="/x&quot; onclick=&quot;evil()">go</a>',
+      );
+    });
+
+    test('json-ld payload cannot break out of or mis-nest the script', () {
+      for (final payload in const [
+        '<!--<script>',
+        '</script><script>alert(1)</script>',
+        '"><img src=x onerror=alert(1)>',
+      ]) {
+        final head = renderHead(
+          SeoMetadata(
+            title: 't',
+            description: 'd',
+            jsonLd: SeoJsonLd.raw({'x': payload}),
+          ),
+        );
+        // Re-parse as a browser would; the sentinel body must survive whole.
+        final page = html.parse(
+          '<html><head>$head</head><body><h1>SENTINEL</h1></body></html>',
+        );
+        expect(page.querySelectorAll('script').length, 1, reason: payload);
+        expect(
+          page.body?.querySelector('h1')?.text,
+          'SENTINEL',
+          reason: payload,
+        );
+      }
+    });
+
+    test('hostile attribute names cannot inject markup', () {
+      // extraMeta key in the head, and a raw attribute key in the seed.
+      final head = renderHead(
+        const SeoMetadata(
+          title: 't',
+          description: 'd',
+          extraMeta: {'x"><script>alert(1)</script>': 'v'},
+        ),
+      );
+      final seed = serializeNode(
+        const SeoElement('div', attributes: {'y"><script>bad</script>': 'v'}),
+      );
+      const shell = '<!DOCTYPE html><html><head></head><body></body></html>';
+      final page = html.parse(
+        injectPage(shell, head: head, seed: seed, baseHref: '/'),
+      );
+      expect(page.querySelectorAll('script'), isEmpty);
+    });
+
+    test('hostile seed survives injectPage as escaped text', () {
+      const shell =
+          '<!DOCTYPE html><html><head></head>'
+          '<body><h1>REAL</h1></body></html>';
+      final out = injectPage(
+        shell,
+        head: '',
+        seed: serializeNode(b.p('<script>alert(1)</script>')),
+        baseHref: '/',
+      );
+      expect(out, contains('REAL'));
+      expect(out, isNot(contains('<script>alert(1)')));
+      expect(out, contains('&lt;script&gt;alert(1)'));
     });
   });
 

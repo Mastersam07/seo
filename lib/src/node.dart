@@ -63,7 +63,10 @@ class SeoHtml {
 
   SeoNode text(String value) => SeoText(value);
 
-  /// Emits [value] without escaping. Only for trusted, pre-escaped HTML.
+  /// Embeds a block of pre-escaped, trusted HTML [value] verbatim (not escaped)
+  /// — e.g. HTML you rendered from Markdown yourself. Everything else in this
+  /// builder is escaped for you; reach for this only when you own and trust the
+  /// markup, since it is emitted as-is.
   SeoNode raw(String value) => SeoText(value, raw: true);
 
   SeoNode h1(Object content) => SeoElement('h1', children: _children(content));
@@ -93,6 +96,60 @@ class SeoHtml {
   SeoNode ul(List<SeoNode> items) => SeoElement('ul', children: items);
   SeoNode ol(List<SeoNode> items) => SeoElement('ol', children: items);
   SeoNode li(Object content) => SeoElement('li', children: _children(content));
+
+  /// A description list. Compose with [dt]/[dd], or use [descriptionList] for a
+  /// term -> definition map.
+  SeoNode dl(List<SeoNode> items) => SeoElement('dl', children: items);
+  SeoNode dt(Object content) => SeoElement('dt', children: _children(content));
+  SeoNode dd(Object content) => SeoElement('dd', children: _children(content));
+
+  /// A description list built from ordered term -> definition [entries].
+  SeoNode descriptionList(Map<String, String> entries) => SeoElement(
+    'dl',
+    children: [
+      for (final MapEntry(:key, :value) in entries.entries) ...[
+        dt(key),
+        dd(value),
+      ],
+    ],
+  );
+
+  SeoNode blockquote(Object content, {String? cite}) => SeoElement(
+    'blockquote',
+    attributes: {'cite': ?cite},
+    children: _children(content),
+  );
+
+  SeoNode figure(Object content) =>
+      SeoElement('figure', children: _children(content));
+  SeoNode figcaption(Object content) =>
+      SeoElement('figcaption', children: _children(content));
+
+  SeoNode table(Object content) =>
+      SeoElement('table', children: _children(content));
+  SeoNode thead(Object content) =>
+      SeoElement('thead', children: _children(content));
+  SeoNode tbody(Object content) =>
+      SeoElement('tbody', children: _children(content));
+  SeoNode tr(List<SeoNode> cells) => SeoElement('tr', children: cells);
+  SeoNode th(Object content) => SeoElement('th', children: _children(content));
+  SeoNode td(Object content) => SeoElement('td', children: _children(content));
+
+  /// A simple data table: an optional header row from [headers] and one body
+  /// row per entry in [rows]. Cell values are normalized like other content.
+  SeoNode dataTable({
+    List<Object>? headers,
+    required List<List<Object>> rows,
+  }) => SeoElement(
+    'table',
+    children: [
+      if (headers case final headers?)
+        thead(tr([for (final cell in headers) th(cell)])),
+      tbody([
+        for (final row in rows) tr([for (final cell in row) td(cell)]),
+      ]),
+    ],
+  );
 
   SeoNode a(String href, Object content) =>
       SeoElement('a', attributes: {'href': href}, children: _children(content));

@@ -59,6 +59,74 @@ void main() {
       ]);
       expect(serializeNode(node), '<ul><li>a</li><li>b</li></ul>');
     });
+
+    test('blockquote carries an optional cite', () {
+      expect(
+        serializeNode(b.blockquote('Quote')),
+        '<blockquote>Quote</blockquote>',
+      );
+      expect(
+        serializeNode(b.blockquote('Q', cite: 'https://x.dev')),
+        '<blockquote cite="https://x.dev">Q</blockquote>',
+      );
+    });
+
+    test('figure with figcaption', () {
+      final node = b.figure([b.img('/a.png', alt: 'a'), b.figcaption('cap')]);
+      expect(
+        serializeNode(node),
+        '<figure><img src="/a.png" alt="a"><figcaption>cap</figcaption></figure>',
+      );
+    });
+
+    test('descriptionList emits dt/dd pairs in order', () {
+      final node = b.descriptionList({'Term': 'Def', 'T2': 'D2'});
+      expect(
+        serializeNode(node),
+        '<dl><dt>Term</dt><dd>Def</dd><dt>T2</dt><dd>D2</dd></dl>',
+      );
+    });
+
+    test('dataTable builds a header row and body rows', () {
+      final node = b.dataTable(
+        headers: ['Plan', 'Price'],
+        rows: [
+          ['Free', '\$0'],
+          ['Pro', '\$9'],
+        ],
+      );
+      expect(
+        serializeNode(node),
+        '<table>'
+        '<thead><tr><th>Plan</th><th>Price</th></tr></thead>'
+        '<tbody>'
+        '<tr><td>Free</td><td>\$0</td></tr>'
+        '<tr><td>Pro</td><td>\$9</td></tr>'
+        '</tbody>'
+        '</table>',
+      );
+    });
+
+    test('dataTable without headers omits thead', () {
+      final node = b.dataTable(
+        rows: [
+          ['a', 'b'],
+        ],
+      );
+      expect(
+        serializeNode(node),
+        '<table><tbody><tr><td>a</td><td>b</td></tr></tbody></table>',
+      );
+    });
+
+    test('table cell content is escaped', () {
+      final node = b.dataTable(
+        rows: [
+          ['<b>x</b>'],
+        ],
+      );
+      expect(serializeNode(node), contains('<td>&lt;b&gt;x&lt;/b&gt;</td>'));
+    });
   });
 
   group('resolvePath', () {

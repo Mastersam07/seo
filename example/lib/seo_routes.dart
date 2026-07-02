@@ -56,6 +56,13 @@ final List<SeoRoute> seoRoutes = [
         'Sortd is free for personal groups. '
         'Upgrade for receipt scanning and multi-currency.',
       ),
+      b.dataTable(
+        headers: ['Plan', 'Price', 'Includes'],
+        rows: [
+          ['Free', '\$0', 'Bill splitting for personal groups'],
+          ['Pro', '\$5/mo', 'Receipt scanning and multi-currency'],
+        ],
+      ),
     ]),
   ),
   SeoRoute.dynamic(

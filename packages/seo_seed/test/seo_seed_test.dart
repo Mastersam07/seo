@@ -445,6 +445,38 @@ void main() {
       expect(out.trimLeft(), startsWith('<!DOCTYPE html>'));
     });
 
+    test('re-injecting a seeded shell keeps a single seed (idempotent)', () {
+      // The builder reads its shell from the same index.html the `/` route
+      // overwrites, so re-runs and incremental builds re-inject an already
+      // seeded shell. A page must never inherit a prior run's seed.
+      final once = inject('<title>x</title>', seed: '<h1>Home</h1>');
+      final twice = injectPage(
+        once,
+        head: '<title>y</title>',
+        seed: '<h1>Pricing</h1>',
+        baseHref: '/',
+      );
+      expect('id="seo-seed"'.allMatches(twice).length, 1);
+      expect(twice, contains('<h1>Pricing</h1>'));
+      expect(twice, isNot(contains('<h1>Home</h1>')));
+    });
+
+    test('strips a stale critical-css style on re-injection', () {
+      final once = inject(
+        '<title>x</title><style id="seo-seed-style">.old{}</style>',
+        seed: '<h1>Home</h1>',
+      );
+      final twice = injectPage(
+        once,
+        head: '<title>y</title><style id="seo-seed-style">.new{}</style>',
+        seed: '<h1>Next</h1>',
+        baseHref: '/',
+      );
+      expect('id="seo-seed-style"'.allMatches(twice).length, 1);
+      expect(twice, contains('.new{}'));
+      expect(twice, isNot(contains('.old{}')));
+    });
+
     test('lenient parsing still yields a full document from loose input', () {
       final out = injectPage(
         '<p>not a document</p>',

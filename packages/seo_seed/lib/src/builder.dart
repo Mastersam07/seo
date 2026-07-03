@@ -492,6 +492,16 @@ String injectPage(
 
   _forceBaseHref(headEl, baseHref);
 
+  // The shell may already carry seed artifacts: the builder reads its shell from
+  // the same `index.html` the `/` route overwrites, so a re-run (or an
+  // incremental build) sees the previous run's seed. Strip any before injecting
+  // so pages stay idempotent and never inherit another page's seed. Walk by id
+  // rather than a `#id` selector so duplicate ids (invalid, but exactly the
+  // corruption we heal) are all removed.
+  for (final el in document.querySelectorAll('*').toList()) {
+    if (el.attributes['id'] case 'seo-seed' || 'seo-seed-style') el.remove();
+  }
+
   for (final node in html.parseFragment(head).nodes.toList()) {
     if (node is Element) _removeSupersededTags(headEl, node);
     headEl.append(node);

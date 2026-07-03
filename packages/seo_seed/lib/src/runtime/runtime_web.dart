@@ -4,7 +4,8 @@ import 'package:web/web.dart' as web;
 /// CSS once the app has taken over, so neither the seeded text nor its styles
 /// linger under the canvas.
 void takeoverImpl() {
-  for (final id in const ['seo-seed', 'seo-seed-style']) {
-    web.document.getElementById(id)?.remove();
+  final seeds = web.document.querySelectorAll('#seo-seed, #seo-seed-style');
+  for (var i = seeds.length - 1; i >= 0; i--) {
+    if (seeds.item(i) case final web.Element el) el.remove();
   }
 }

@@ -222,7 +222,8 @@ save, wrap it in a generic file watcher (`watchexec`, `entr`).
 import 'package:seo_seed/runtime.dart';
 
 void main() {
-  SeoRuntime.takeover(); // no-op off web; removes #seo-seed on web
+  SeoRuntime.takeover(); // no-op off web; on web clears the visible seed (a
+                         // hidden-mode seed stays, already display:none)
   runApp(const MyApp());
 }
 ```
@@ -353,11 +354,44 @@ How a locale maps to a URL is pluggable via `SeoLocaleStrategy`:
 SeoBuilder(seoRoutes, localeStrategy: const SubdomainLocales(domain: 'example.com'));
 ```
 
+## Seed visibility
+
+The seed can be crawler-visible in two ways, chosen at build time.
+
+**Hidden (default).** The seed is injected `display:none` and marked
+`data-seo-keep`, so `takeover()` leaves it in the DOM instead of removing it.
+Users never see it and there is no pre-hydration flash, while crawlers still read
+it — both non-rendering ones (from the raw HTML) and JS-rendering ones like
+Googlebot (from the rendered DOM, whose canonical view keeps the kept node). The
+trade-off is ranking weight: **search engines discount hidden content**, and a
+page whose only crawlable text is a hidden seed is the strongest "hidden text"
+signal, so expect lower weight than a visible seed. This is on by default because
+it is the zero-flash option; it is a deliberate SEO trade, not a free win.
+
+**Visible (`--show-seed`).** The seed paints in normal flow and `takeover()`
+removes it once Flutter boots. It gets full ranking weight and can be styled into
+an LCP hero (see below). The cost is a brief window before boot where the seed is
+on screen — style it with `criticalCss` so it reads as an intentional splash
+rather than raw text.
+
+```sh
+dart run tool/build_seo.dart --show-seed      # visible, removed on boot
+# or in seo.yaml:  hide-seed: false
+```
+
+Verify what a crawler actually gets with Google Search Console → URL Inspection,
+which shows both the crawled HTML and the rendered DOM for a live URL.
+
 ## Performance (Core Web Vitals)
 
 A canvas app starts at a disadvantage: nothing meaningful paints until the
 Flutter engine boots. Crawlable content is necessary but not sufficient —
 ranking is also a speed function.
+
+> The styled-hero strategy below applies to the **visible** seed
+> (`--show-seed`). The default hidden seed does not paint, so it is not
+> LCP-eligible — if first paint matters more than the hidden-content trade-off,
+> build visible and style the hero.
 
 **Paint a styled hero before the engine boots.** The seed block is already the
 first thing in `<body>` and visible, so it paints immediately — it just looks

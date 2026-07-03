@@ -33,6 +33,11 @@
       "minimum": 1,
       "description": "Number of pages to generate concurrently, overlapping I/O in the metadata/content callbacks (e.g. API calls). Cooperative concurrency in a single isolate, so size it to your API's rate limits. Overridden by --concurrency / -j.",
       "default": 1
+    },
+    "hide-seed": {
+      "type": "boolean",
+      "description": "Hide the crawler seed with display:none and keep it in the DOM (takeover() does not remove it) instead of showing it until the app boots. On by default: users never see it and there is no pre-hydration flash, but search engines discount hidden content, so it loses ranking weight versus a visible seed. Set false (or pass --show-seed) to show a visible seed that takeover() removes on boot.",
+      "default": true
     }
   }
 }

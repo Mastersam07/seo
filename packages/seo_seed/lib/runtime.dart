@@ -12,8 +12,11 @@ import 'src/runtime/runtime.dart' as runtime;
 /// Call once in `main` before `runApp`.
 ///
 /// On web this removes the crawler seed block (`#seo-seed`) once invoked, so the
-/// seeded content is not visible under the running app. On every other platform
-/// it is a no-op, so it is safe to call unconditionally from shared `main` code.
+/// seeded content is not visible under the running app — unless the page was
+/// built in the default hidden-seed mode, where the seed is already `display:none`
+/// and marked `data-seo-keep`; those are left in place so a JS-rendering crawler
+/// still finds the content. On every other platform it is a no-op, so it is safe
+/// to call unconditionally from shared `main` code.
 class SeoRuntime {
   const SeoRuntime._();
 

@@ -64,6 +64,7 @@ class SeoBuilder {
       :incremental,
       :concurrency,
       :buildWeb,
+      :hideSeed,
     ) = _parseOptions(
       args,
     );
@@ -134,6 +135,7 @@ class SeoBuilder {
                 siteBase ?? '',
                 defaultLocale ?? '',
                 localeStrategy.runtimeType.toString(),
+                hideSeed,
               ]),
             ),
           )
@@ -191,6 +193,7 @@ class SeoBuilder {
           siteBase: siteBase,
           localeStrategy: localeStrategy,
           defaultLocale: defaultLocale,
+          hideSeed: hideSeed,
         );
         final page = rendered.html;
 
@@ -403,6 +406,7 @@ Future<SeoPage> renderSeoPage({
   String? siteBase,
   SeoLocaleStrategy localeStrategy = const PathPrefixLocales(),
   String? defaultLocale,
+  bool hideSeed = true,
 }) async {
   final routePath = route.resolvePath(params);
   final pagePath = switch (locale) {
@@ -448,6 +452,7 @@ Future<SeoPage> renderSeoPage({
     ),
     seed: serializeNode(node),
     baseHref: baseHref,
+    hideSeed: hideSeed,
   );
 
   return (
@@ -474,11 +479,20 @@ Future<SeoPage> renderSeoPage({
 ///  * prepends the crawler seed block as the first child of `<body>`. It is
 ///    left in normal flow and visible (no `display:none`) so crawlers treat it
 ///    as real content; `SeoRuntime.takeover()` removes it once Flutter paints.
+///
+/// When [hideSeed] is set, the seed is instead marked `data-seo-keep` and hidden
+/// with an injected `#seo-seed{display:none}` style, so `takeover()` leaves it in
+/// the DOM: users never see it (no pre-hydration flash) but it stays visible to
+/// crawlers — including a JS-rendering crawler, whose canonical view is the
+/// rendered DOM, so removing it there would hide the content entirely. The
+/// trade-off is ranking weight: search engines discount hidden content. See the
+/// README "Seed visibility".
 String injectPage(
   String shell, {
   required String head,
   required String seed,
   required String baseHref,
+  bool hideSeed = false,
 }) {
   final document = html.parse(shell);
   final headEl = document.head;
@@ -509,6 +523,20 @@ String injectPage(
 
   final seedDiv = Element.tag('div')..attributes['id'] = 'seo-seed';
   seedDiv.nodes.addAll(html.parseFragment(seed).nodes);
+
+  if (hideSeed) {
+    seedDiv.attributes['data-seo-keep'] = '';
+    for (final el in headEl.querySelectorAll('*').toList()) {
+      if (el.attributes['id'] == 'seo-seed-style') el.remove();
+    }
+    headEl.append(
+      Element.tag('style')
+        ..attributes['id'] = 'seo-seed-style'
+        ..attributes['data-seo-keep'] = ''
+        ..text = '#seo-seed{display:none!important}',
+    );
+  }
+
   bodyEl.insertBefore(seedDiv, bodyEl.firstChild);
 
   return document.outerHtml;
@@ -607,6 +635,7 @@ typedef _Options = ({
   bool incremental,
   int concurrency,
   bool buildWeb,
+  bool hideSeed,
 });
 
 _Options _parseOptions(List<String> args) {
@@ -624,6 +653,7 @@ _Options _parseOptions(List<String> args) {
   var incremental = config['incremental'] as bool? ?? false;
   var concurrency = (config['concurrency'] as num?)?.toInt() ?? 1;
   var buildWeb = false;
+  var hideSeed = config['hide-seed'] as bool? ?? true;
 
   for (var i = 0; i < args.length; i++) {
     String next() => (i + 1 < args.length) ? args[++i] : '';
@@ -646,6 +676,10 @@ _Options _parseOptions(List<String> args) {
         concurrency = int.tryParse(next()) ?? concurrency;
       case '--build-web':
         buildWeb = true;
+      case '--hide-seed':
+        hideSeed = true;
+      case '--show-seed' || '--no-hide-seed':
+        hideSeed = false;
     }
   }
 
@@ -660,6 +694,7 @@ _Options _parseOptions(List<String> args) {
     incremental: incremental,
     concurrency: concurrency < 1 ? 1 : concurrency,
     buildWeb: buildWeb,
+    hideSeed: hideSeed,
   );
 }
 

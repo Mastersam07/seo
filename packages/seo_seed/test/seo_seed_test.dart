@@ -461,6 +461,29 @@ void main() {
       expect(twice, isNot(contains('<h1>Home</h1>')));
     });
 
+    test('hideSeed marks the seed data-seo-keep and hides it via style', () {
+      final out = injectPage(
+        shell,
+        head: '<title>x</title>',
+        seed: '<h1>Hi</h1>',
+        baseHref: '/',
+        hideSeed: true,
+      );
+      // Seed content is still present (crawler-visible in the rendered DOM)...
+      expect(out, contains('<h1>Hi</h1>'));
+      expect('id="seo-seed"'.allMatches(out).length, 1);
+      // ...marked so takeover() leaves it, and hidden from users.
+      expect(out, contains('data-seo-keep'));
+      expect(out, contains('#seo-seed{display:none!important}'));
+      expect('id="seo-seed-style"'.allMatches(out).length, 1);
+    });
+
+    test('default (visible) mode injects no hide style or keep marker', () {
+      final out = inject('<title>x</title>', seed: '<h1>Hi</h1>');
+      expect(out, isNot(contains('data-seo-keep')));
+      expect(out, isNot(contains('display:none')));
+    });
+
     test('strips a stale critical-css style on re-injection', () {
       final once = inject(
         '<title>x</title><style id="seo-seed-style">.old{}</style>',
@@ -1038,6 +1061,37 @@ void main() {
       final sitemap = File('${dir.path}/sitemap.xml').readAsStringSync();
       expect(sitemap, contains('https://example.com/app/pricing'));
     });
+
+    test('hides the seed by default and keeps it for crawlers', () async {
+      final dir = tempWithShell(
+        '<!DOCTYPE html><html><head><base href="/"></head>'
+        '<body></body></html>',
+      );
+      await SeoBuilder([pricing()]).run(['--output', dir.path]);
+
+      final page = File('${dir.path}/pricing/index.html').readAsStringSync();
+      expect(page, contains('data-seo-keep'));
+      expect(page, contains('#seo-seed{display:none!important}'));
+      expect(page, contains('<h1>Pricing</h1>')); // content still present
+    });
+
+    test(
+      '--show-seed opts back into a visible, removed-on-boot seed',
+      () async {
+        final dir = tempWithShell(
+          '<!DOCTYPE html><html><head><base href="/"></head>'
+          '<body></body></html>',
+        );
+        await SeoBuilder([
+          pricing(),
+        ]).run(['--output', dir.path, '--show-seed']);
+
+        final page = File('${dir.path}/pricing/index.html').readAsStringSync();
+        expect(page, isNot(contains('data-seo-keep')));
+        expect(page, isNot(contains('display:none')));
+        expect(page, contains('<h1>Pricing</h1>'));
+      },
+    );
 
     test('root base href produces unprefixed sitemap URLs', () async {
       final dir = tempWithShell(

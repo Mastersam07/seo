@@ -8,7 +8,7 @@ import 'package:yaml/yaml.dart';
 /// varies.
 ///
 /// Recognized keys: `output`, `base-url`, `base-href`, `incremental`,
-/// `concurrency`.
+/// `concurrency`, `hide-seed`.
 Map<String, Object?> loadConfig(String path) {
   final file = File(path);
   if (!file.existsSync()) return const {};

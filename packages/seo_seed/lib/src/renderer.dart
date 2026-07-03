@@ -20,6 +20,7 @@ class SeoRenderer {
     this.baseHref = '/',
     this.defaultLocale,
     this.localeStrategy = const PathPrefixLocales(),
+    this.hideSeed = true,
   });
 
   final List<SeoRoute> routes;
@@ -28,6 +29,11 @@ class SeoRenderer {
   final String baseHref;
   final String? defaultLocale;
   final SeoLocaleStrategy localeStrategy;
+
+  /// When true, the seed is hidden (`display:none`) and kept in the DOM instead
+  /// of removed on boot — invisible to users, still readable by crawlers, at the
+  /// cost of ranking weight. Mirrors the builder's `--hide-seed`.
+  final bool hideSeed;
 
   /// Renders the page for [requestPath] (e.g. `/post/rent`, `/fr/pricing`), or
   /// null when no route matches or the route's callbacks reject it (e.g. an
@@ -49,6 +55,7 @@ class SeoRenderer {
             siteBase: siteBase,
             localeStrategy: localeStrategy,
             defaultLocale: defaultLocale,
+            hideSeed: hideSeed,
           );
           return rendered.html;
         } catch (_) {

@@ -11,23 +11,6 @@ import 'package:seo_seed/src/robots.dart';
 import 'package:seo_seed/src/sitemap.dart';
 import 'package:test/test.dart';
 
-/// A stand-in for a third-party router's route type, with nested children and
-/// an optional attached SEO descriptor.
-class _FakeRoute {
-  _FakeRoute(this.path, {this.seo, this.children = const []});
-  final String path;
-  final SeoRouteDescriptor? seo;
-  final List<_FakeRoute> children;
-}
-
-class _FakeAdapter implements SeoRouterAdapter<_FakeRoute> {
-  const _FakeAdapter();
-  @override
-  SeoRouteDescriptor? describe(_FakeRoute route) => route.seo;
-  @override
-  Iterable<_FakeRoute> childrenOf(_FakeRoute route) => route.children;
-}
-
 void main() {
   const b = SeoHtml();
 
@@ -860,42 +843,6 @@ void main() {
       ).toSeoRoute();
       expect(localized.isDynamic, isTrue);
       expect(localized.locales, ['en', 'fr']);
-    });
-
-    test('seoRoutesFrom walks a nested router tree', () async {
-      final routes = [
-        _FakeRoute(
-          '/',
-          children: [
-            _FakeRoute(
-              '/pricing',
-              seo: SeoRouteDescriptor(
-                path: '/pricing',
-                metadata: (_) =>
-                    const SeoMetadata(title: 'P', description: 'd'),
-                content: (_, b) => b.h1('x'),
-              ),
-            ),
-            _FakeRoute(
-              '/post/[slug]',
-              seo: SeoRouteDescriptor(
-                path: '/post/[slug]',
-                params: () async => [
-                  const SeoParams({'slug': 'a'}),
-                ],
-                metadata: (p) =>
-                    SeoMetadata(title: p['slug'], description: 'd'),
-                content: (p, b) => b.h1('x'),
-              ),
-            ),
-            _FakeRoute('/admin'), // no descriptor -> skipped
-          ],
-        ),
-      ];
-
-      final seoRoutes = seoRoutesFrom(routes, const _FakeAdapter());
-      expect(seoRoutes.map((r) => r.path), ['/pricing', '/post/[slug]']);
-      expect(await seoRoutes[1].resolveParams(), hasLength(1));
     });
   });
 

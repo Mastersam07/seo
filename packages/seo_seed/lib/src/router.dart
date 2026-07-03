@@ -5,9 +5,13 @@ import 'node.dart';
 import 'params.dart';
 import 'route.dart';
 
-/// The SEO facet of a route, declared once and attached to your router's own
-/// route objects, so a route's path and params live in a single place instead
-/// of being restated for `seo_seed`.
+/// A pure-Dart declaration of a route's path and SEO, so it can be shared
+/// between your app's router and the build tool without either restating it.
+///
+/// A router adapter (e.g. `seo_seed_go_router`) builds the router's routes from
+/// a list of these; the build tool turns the same list into `SeoRoute`s via
+/// [toSeoRoute]. Because it carries no widgets, a file of descriptors imports no
+/// Flutter — so a plain `dart run` build tool can import it.
 ///
 /// [metadata] and [content] mirror [SeoRoute.dynamic]. Provide [params] (or
 /// [paramsStream]) for a route that fans out to many pages, or neither for a
@@ -51,48 +55,4 @@ class SeoRouteDescriptor {
       locales: locales,
     );
   }
-}
-
-/// Bridges an arbitrary router's route type [R] to `seo_seed`. Implement one
-/// small adapter per router (go_router, auto_route, kaisel, a custom router):
-/// say how to read a route's [SeoRouteDescriptor] and how to reach its nested
-/// child routes. The core stays router-agnostic; [seoRoutesFrom] does the walk.
-///
-/// ```dart
-/// class GoRouterSeo implements SeoRouterAdapter<RouteBase> {
-///   const GoRouterSeo();
-///   @override
-///   SeoRouteDescriptor? describe(RouteBase r) =>
-///       r is SeoGoRoute ? r.seo : null; // however you attach it
-///   @override
-///   Iterable<RouteBase> childrenOf(RouteBase r) =>
-///       r is GoRoute ? r.routes : const [];
-/// }
-/// ```
-abstract interface class SeoRouterAdapter<R> {
-  /// The SEO descriptor for [route], or null when the route is not indexable.
-  SeoRouteDescriptor? describe(R route);
-
-  /// The nested child routes of [route] (empty for flat routers).
-  Iterable<R> childrenOf(R route);
-}
-
-/// Walks [routes] (and their descendants) through [adapter], collecting a
-/// [SeoRoute] for every route that carries an SEO descriptor.
-List<SeoRoute> seoRoutesFrom<R>(
-  Iterable<R> routes,
-  SeoRouterAdapter<R> adapter,
-) {
-  final result = <SeoRoute>[];
-  void walk(Iterable<R> rs) {
-    for (final route in rs) {
-      if (adapter.describe(route) case final descriptor?) {
-        result.add(descriptor.toSeoRoute());
-      }
-      walk(adapter.childrenOf(route));
-    }
-  }
-
-  walk(routes);
-  return result;
 }

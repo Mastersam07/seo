@@ -448,43 +448,31 @@ real build.
 
 ## Router integration (optional)
 
-If you already declare routes in a router (go_router, auto_route, kaisel, …),
-you can avoid restating each path for `seo_seed`. Attach a `SeoRouteDescriptor`
-to your own route objects, write a tiny `SeoRouterAdapter` for your router, and
-let `seoRoutesFrom` extract the `SeoRoute`s (it walks nested route trees):
+If you already declare routes in a router, you can avoid restating each path for
+`seo_seed`. The shape depends on one hard constraint: **the build tool runs in a
+plain Dart VM (no `dart:ui`), so the file it imports must not pull in Flutter.**
 
-```dart
-class GoRouterSeo implements SeoRouterAdapter<RouteBase> {
-  const GoRouterSeo();
-  @override
-  SeoRouteDescriptor? describe(RouteBase r) => r is SeoGoRoute ? r.seo : null;
-  @override
-  Iterable<RouteBase> childrenOf(RouteBase r) => r is GoRoute ? r.routes : const [];
-}
+- **Flutter-coupled routers (go_router, auto_route)** — the route file imports
+  Flutter (widget builders), so you can't import it in a `dart run` build tool.
+  Go **descriptor-first**: declare the routes as pure-Dart `SeoRouteDescriptor`s
+  (shared with the build tool), and build the router's routes *from* them. Path
+  declared once; the app supplies only the screen.
+  See [`seo_seed_go_router`](../seo_seed_go_router) and its
+  [example](../seo_seed_go_router/example) — a real go_router app whose SEO
+  generates with a plain `dart run tool/build_seo.dart`.
+- **Pure-Dart routers (kaisel)** — the routing core has no Flutter, so the route
+  definitions *are* importable by a bare-VM build tool. kaisel's routes are
+  sealed classes with URLs from a `KaiselCodec`, so you enumerate the indexable
+  instances and let the codec supply each URL.
+  See [`seo_seed_kaisel`](../seo_seed_kaisel) and its
+  [example](../seo_seed_kaisel/example) — a real kaisel app whose SEO also
+  generates with a plain `dart run`, reusing the same codec the app routes with.
 
-final seoRoutes = seoRoutesFrom(router.configuration.routes, const GoRouterSeo());
-```
-
-The adapter is the only router-specific piece (a handful of lines); the core
-stays router-agnostic and takes **no router dependency**. Two adapters ship as
-their own packages in this monorepo, each depending only on `seo_seed` + its
-router — so you add just the one you use:
-
-- [`seo_seed_go_router`](../seo_seed_go_router) — go_router is a path-table
-  router, so it fits the walk directly (`SeoGoRoute` carries the SEO facet;
-  `:param` is converted to `[param]`).
-- [`seo_seed_kaisel`](../seo_seed_kaisel) — kaisel is a sealed-class router
-  with **no path strings**, so it integrates *differently*: URLs come from its
-  `KaiselCodec`, and you enumerate the indexable route instances rather than walk
-  a tree (this adapter is pure Dart — no Flutter dep). A good reminder that the
-  seam adapts to each router's model.
-
-One honest constraint: the generator runs in a plain Dart VM with no engine, so
-your build tool must be able to *import* the router config without booting
-Flutter — i.e. read route structure, never call the widget builders. That holds
-for reading paths and an attached descriptor. If your router config can't be
-imported that way, keep declaring `SeoRoute`s directly (the default); the data
-layer is what really matters to share, and that you already can.
+Each adapter ships as its own package (in this monorepo), depending only on
+`seo_seed` + its router, so you add just the one you use. Both build on the
+core's `SeoRouteDescriptor` — a pure-Dart declaration of a route's path plus its
+metadata and content, shared between your router and the build tool so neither
+restates it.
 
 ## Server-side rendering (fresh per request)
 

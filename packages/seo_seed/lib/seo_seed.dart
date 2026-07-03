@@ -8,25 +8,13 @@
 ///  * Call [SeoRuntime.takeover] once in `main` to remove the seed on web.
 library;
 
-import 'src/runtime/runtime.dart' as runtime;
-
+export 'runtime.dart' show SeoRuntime;
 export 'src/params.dart';
 export 'src/metadata.dart';
 export 'src/json_ld.dart';
 export 'src/locale.dart';
 export 'src/node.dart' show SeoNode, SeoElement, SeoText, SeoHtml;
 export 'src/route.dart';
+export 'src/router.dart';
 export 'src/builder.dart';
 export 'src/renderer.dart';
-
-/// Client-side entry point. Call once in `main` before `runApp`.
-///
-/// On web this removes the crawler seed block (`#seo-seed`) once invoked, so
-/// the seeded content is not visible under the running app. On every other
-/// platform it is a no-op, so it is safe to call unconditionally from shared
-/// `main` code.
-class SeoRuntime {
-  const SeoRuntime._();
-
-  static void takeover() => runtime.takeoverImpl();
-}

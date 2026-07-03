@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:seo_seed/seo_seed.dart';
+import 'package:seo_seed/runtime.dart';
 
 void main() {
-  // Removes the crawler seed block (#seo-seed) on web once the app boots;
-  // a no-op on every other platform.
   SeoRuntime.takeover();
   runApp(const DemoApp());
 }

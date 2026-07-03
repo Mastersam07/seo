@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:html/parser.dart' as html;
-import 'package:seo_seed/seo_seed.dart';
+import 'package:seo_seed/build.dart';
 import 'package:seo_seed/src/cache.dart';
 import 'package:seo_seed/src/config.dart';
 import 'package:seo_seed/src/serialize.dart';

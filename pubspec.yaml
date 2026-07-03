@@ -8,4 +8,6 @@ workspace:
   - packages/seo_seed
   - packages/seo_seed/example
   - packages/seo_seed_go_router
+  - packages/seo_seed_go_router/example
   - packages/seo_seed_kaisel
+  - packages/seo_seed_kaisel/example

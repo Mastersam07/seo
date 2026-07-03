@@ -1,4 +1,4 @@
-import 'package:seo_seed/seo_seed.dart';
+import 'package:seo_seed/build.dart';
 
 import 'package:seo_seed_example/seo_routes.dart';
 

@@ -4,36 +4,40 @@ import 'package:go_router/go_router.dart';
 import 'package:seo_seed/seo_seed.dart';
 import 'package:seo_seed_go_router/seo_seed_go_router.dart';
 
-/// Declared once; the app builds its router from this list, and seo_seed reads
-/// the same list.
-List<RouteBase> appRoutes() => [
-  SeoGoRoute(
+/// The single, pure-Dart source of truth for paths + SEO.
+final descriptors = <SeoRouteDescriptor>[
+  SeoRouteDescriptor(
     path: '/pricing',
-    builder: (context, state) => const Placeholder(),
-    seoMetadata: (_) =>
-        const SeoMetadata(title: 'Pricing', description: 'Simple pricing.'),
-    seoContent: (_, b) => b.h1('Simple pricing'),
+    metadata: (_) => const SeoMetadata(title: 'Pricing', description: 'd'),
+    content: (_, b) => b.h1('Pricing'),
   ),
-  SeoGoRoute(
-    path: '/post/:slug',
-    builder: (context, state) => Text(state.pathParameters['slug'] ?? ''),
-    seoParams: () async => [const SeoParams({'slug': 'splitting-rent-fairly'})],
-    seoMetadata: (p) => SeoMetadata(title: p['slug'], description: 'A post.'),
-    seoContent: (p, b) => b.h1(p['slug']),
+  SeoRouteDescriptor(
+    path: '/post/[slug]',
+    params: () async => [
+      const SeoParams({'slug': 'hi'}),
+    ],
+    metadata: (p) => SeoMetadata(title: p['slug'], description: 'd'),
+    content: (p, b) => b.h1(p['slug']),
   ),
 ];
 
 void main() {
-  test('extracts SeoRoutes and converts :param -> [param]', () async {
-    final routes = seoRoutesFrom(appRoutes(), const GoRouterSeo());
-    expect(routes.map((r) => r.path), containsAll(['/pricing', '/post/[slug]']));
+  test('goRoutesFor builds GoRoutes with :param paths', () {
+    final routes = goRoutesFor(
+      descriptors,
+      (context, state, d) => const SizedBox(),
+    ).cast<GoRoute>();
+    expect(routes.map((r) => r.path), ['/pricing', '/post/:slug']);
+  });
 
-    final post = routes.firstWhere((r) => r.path == '/post/[slug]');
-    expect(post.isDynamic, isTrue);
+  test('the same descriptors drive SEO via toSeoRoute', () async {
+    final seoRoutes = [for (final d in descriptors) d.toSeoRoute()];
+    expect(seoRoutes.map((r) => r.path), ['/pricing', '/post/[slug]']);
+    final post = seoRoutes.firstWhere((r) => r.path == '/post/[slug]');
     expect(await post.resolveParams(), hasLength(1));
   });
 
-  test('goPathToSeoPath converts colon params', () {
-    expect(goPathToSeoPath('/a/:b/c/:d'), '/a/[b]/c/[d]');
+  test('seoPathToGoPath converts bracket params', () {
+    expect(seoPathToGoPath('/a/[b]/c/[d]'), '/a/:b/c/:d');
   });
 }

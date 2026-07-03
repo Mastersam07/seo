@@ -1,0 +1,25 @@
+name: seo_seed_kaisel_example
+description: "Flutter web app using kaisel, with SEO via seo_seed_kaisel."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.0
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  kaisel: ^0.21.0
+  kaisel_core: ^0.21.0
+  seo_seed: ^0.1.0
+  seo_seed_kaisel: ^0.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

@@ -15,6 +15,8 @@ final seoRoutes = <SeoRouteDescriptor>[
       title: 'Sortd',
       description: 'Split bills, settle up, done.',
       canonical: '/',
+      openGraph: OpenGraph(image: '/og/home.png'),
+      twitter: TwitterCard(site: '@sortd'),
     ),
     content: (_, b) =>
         b.article([b.h1('Sortd'), b.p('Split bills, settle up, done.')]),
@@ -25,6 +27,8 @@ final seoRoutes = <SeoRouteDescriptor>[
       title: 'Pricing — Sortd',
       description: 'Free for personal groups.',
       canonical: '/pricing',
+      openGraph: OpenGraph(image: '/og/pricing.png'),
+      twitter: TwitterCard(site: '@sortd'),
     ),
     content: (_, b) => b.article([
       b.h1('Simple pricing'),
@@ -40,6 +44,12 @@ final seoRoutes = <SeoRouteDescriptor>[
       description: 'A Sortd post.',
       canonical: '/post/${p['slug']}',
       breadcrumbs: true,
+      openGraph: OpenGraph(
+        title: posts[p['slug']],
+        type: 'article',
+        image: '/og/post/${p['slug']}.png',
+      ),
+      twitter: const TwitterCard(site: '@sortd'),
     ),
     content: (p, b) => b.article([b.h1(posts[p['slug']] ?? '')]),
   ),
